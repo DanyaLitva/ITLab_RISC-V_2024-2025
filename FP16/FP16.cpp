@@ -45,11 +45,32 @@ int main()
     float f1, f2, f3;
 
     A.sign = 0;
-    A.exp = 10;
-    A.man = 512;
+    A.exp = 17;
+    A.man = 25;
+    B.sign = 0;
+    B.exp = 16;
+    B.man = 700;
+
+    AddFP16(A, B, &C);
+    ConvertFP16tof(A, &f1);
+    ConvertFP16tof(B, &f2);
+    ConvertFP16tof(C, &f3);
+    printf("A = %f\n", f1);
+    PrintFP16_ed(A);
+    printf("\nB = %f\n", f2);
+    PrintFP16_ed(B);
+    printf("\nC = A + B = %f\n", f3);
+    PrintFP16_ed(C);
+    printf("\nthe result when using fleets: %f", (f1 + f2));
+    printf("\nerror rate: %f", (f3 - (f1 + f2)));
+    printf("\n\n");
+
+    A.sign = 0;
+    A.exp = 18;
+    A.man = 253;
     B.sign = 0;
     B.exp = 20; 
-    B.man = 0;  
+    B.man = 51;  
 
     MulFP16(A, B, &C);
     ConvertFP16tof(A, &f1);
@@ -61,6 +82,8 @@ int main()
     PrintFP16_ed(B);
     printf("\nC = A * B = %f\n", f3); 
     PrintFP16_ed(C);
+    printf("\nthe result when using fleets: %f", (f1 * f2));
+    printf("\nerror rate: %f", (f3 - (f1 * f2)));
 }
 
 
