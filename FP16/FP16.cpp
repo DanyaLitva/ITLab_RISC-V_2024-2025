@@ -25,7 +25,7 @@ float GetRefFP16(FP16 N);
 void AssignFP16(FP16* N1, FP16 N2);
 //конвертация FP16 в float
 void ConvertFP16tof(FP16 N, float* f);
-//конвертация float в FP16(не реализовано)
+//конвертация float в FP16
 void ConvertftoFP16(float f, FP16* N);
 //вывод битов FP16
 void PrintFP16(FP16 N);
@@ -43,10 +43,13 @@ int main()
 {
     FP16 A,B,C;
     float f1, f2, f3;
-
+    /*
     A.sign = 0;
     A.exp = 17;
     A.man = 25;
+    */
+    f1 = 8;
+    ConvertftoFP16(f1, &A);
     B.sign = 0;
     B.exp = 16;
     B.man = 700;
@@ -61,9 +64,12 @@ int main()
     PrintFP16_ed(B);
     printf("\nC = A + B = %f\n", f3);
     PrintFP16_ed(C);
-    printf("\nthe result when using fleets: %f", (f1 + f2));
+    printf("\nthe result when using floats: %f", (f1 + f2));
     printf("\nerror rate: %f", (f3 - (f1 + f2)));
     printf("\n\n");
+
+    ConvertftoFP16(f3,&C);
+    printf("\n");
 
     A.sign = 0;
     A.exp = 18;
@@ -82,7 +88,7 @@ int main()
     PrintFP16_ed(B);
     printf("\nC = A * B = %f\n", f3); 
     PrintFP16_ed(C);
-    printf("\nthe result when using fleets: %f", (f1 * f2));
+    printf("\nthe result when using floats: %f", (f1 * f2));
     printf("\nerror rate: %f", (f3 - (f1 * f2)));
 }
 
@@ -129,11 +135,11 @@ void PrintFP16(FP16 N) {
     int temp;
     printf("%c", (N.sign + '0'));
     for (int i = 0; i < expLength; ++i) {
-        if ((N.man & (1 <<( expLength - i-1))) != 0) temp = 1; else temp = 0;
+        if ((N.exp & (1 << (expLength - i - 1))) != 0) temp = 1; else temp = 0;
         printf("%c", (temp + '0'));
     }
     for (int i = 0; i < manLength; ++i) {
-        if ((N.exp & (1 << (manLength - i-1))) != 0) temp = 1; else temp = 0;
+        if ((N.man & (1 << (manLength - i - 1))) != 0) temp = 1; else temp = 0;
         printf("%c", (temp + '0'));
     }
 }
@@ -195,5 +201,33 @@ void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
     }
     Res->man = (temp);
     Res->sign = N1.sign + N2.sign;
+}
+
+char bytes[sizeof(float)];
+char bites[sizeof(float) * 8];
+//float: 1:8:23
+void ConvertftoFP16(float f, FP16* N){
+    //f = -12.1171875f;
+    for (int i = 0; i < sizeof(float) / sizeof(char); i++)
+    {
+        bytes[i] = *((char*)(&f) + i * sizeof(char));     
+    }
+    for (int i = 0; i < (sizeof(float)*8); ++i) {
+        bites[31-i] = (bytes[i / 8] >> (i % 8)) & 1;
+        //if(bites[31-i]!=0)    printf("%d = %d ", (31-i),bites[31-i]);
+    }
+    
+    N->sign = bites[0];
+    N->exp = bites[1] * (1 << (expLength-1));
+    N->man = 0;
+    for (int i = 0; i < 4; ++i) {
+        N->exp = N->exp + (bites[5+i] * (1 << (expLength - 2 - i)));
+    }
+    for (int i = 0; i < 10; ++i) {
+        N->man = N->man + (bites[9 + i] * (1 << (manLength - 1 - i)));
+    }
+    //PrintFP16_ed(*N);
+
+
 
 }
