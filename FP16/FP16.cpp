@@ -23,14 +23,20 @@ int GetManFP16(FP16 A);
 float GetRefFP16(FP16 N);
 //operator=
 void AssignFP16(FP16* N1, FP16 N2);
+//конвертация FP16 в float
 void ConvertFP16tof(FP16 N, float* f);
+//конвертация float в FP16(не реализовано)
 void ConvertftoFP16(float f, FP16* N);
+//вывод битов FP16
 void PrintFP16(FP16 N);
+//вывод битов FP16 с разделением знака, порядка и мантиссы
 void PrintFP16_ed(FP16 N);
+//вывод FP16 в виде float
 void PrintFP16_f(FP16 N);
-//operator+
+//operator+ (реализован + для нормалов)
 void AddFP16(FP16 N1, FP16 N2, FP16* Res);
-
+//operator* (реализовано для нормалов)
+void MulFP16(FP16 N1, FP16 N2, FP16* Res);
 
 
 int main()
@@ -39,12 +45,13 @@ int main()
     float f1, f2, f3;
 
     A.sign = 0;
-    A.exp = 16;
-    A.man = 100;
+    A.exp = 10;
+    A.man = 512;
     B.sign = 0;
     B.exp = 20; 
-    B.man = 5;  
-    AddFP16(A, B, &C);
+    B.man = 0;  
+
+    MulFP16(A, B, &C);
     ConvertFP16tof(A, &f1);
     ConvertFP16tof(B, &f2);
     ConvertFP16tof(C, &f3);
@@ -52,7 +59,7 @@ int main()
     PrintFP16_ed(A);
     printf("\nB = %f\n", f2);
     PrintFP16_ed(B);
-    printf("\nC = A + B = %f\n", f3); 
+    printf("\nC = A * B = %f\n", f3); 
     PrintFP16_ed(C);
 }
 
@@ -128,16 +135,6 @@ void PrintFP16_f(FP16 N) {
     printf("%f", temp);
 }
 
-/*
-1.Порядок результата принимается равным большему из двух порядков.
-2.Производится коррекция мантиссы с меньшим порядком : сдвигается вправо на число порядков, равное разности порядков.
-3.Этап сложения мантисс : производится сложение мантисс как чисел с фиксированной точкой.
-4.Нормализация результата : если результат не нормализован, то нормализуем результат – сдвигаем мантиссу влево на количество разрядов, равное числу нулей до первой значащей цифры; порядок мантиссы при этом уменьшается на это же число.
-
-При сложении мантисс возникает «переполнение».Тогда сдвигаем мантиссу вправо, а порядок увеличивается.
-*/
-
-
 
 void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
     int diff = abs(N1.exp - N2.exp); //разница порядков
@@ -161,3 +158,19 @@ void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
 }
 
 
+void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
+    int shiftExp = (1 << (expLength - 1)) - 1; //смещение   -15 ... 16
+    int temp = ((N1.man * N2.man)/(1<<manLength)) + N1.man + N2.man;
+
+    Res->exp = ((N1.exp-shiftExp) + (N2.exp-shiftExp) + shiftExp);
+    int temp2 = (1 << manLength);
+    while (temp >= (1<<(manLength))) {
+        temp = (temp / 2);
+        temp2 /= 2;
+        temp -= temp2;
+        Res->exp++;
+    }
+    Res->man = (temp);
+    Res->sign = N1.sign + N2.sign;
+
+}
