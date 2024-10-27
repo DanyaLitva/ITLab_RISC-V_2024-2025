@@ -1,0 +1,163 @@
+﻿// FP16.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
+//
+
+#include <stdio.h>
+#include <math.h>
+
+
+    //распределение бит для FP16 1:5:10
+const int signLength = 1;
+const int expLength = 5;
+const int manLength = 10;
+
+typedef struct {
+    unsigned int sign : 1; //знак           %2
+    unsigned int exp : 5; //порядок         %32
+    unsigned int man : 10; //мантисса       %1024
+    float ref; //референс для сравнения
+} FP16;
+
+int GetSignFP16(FP16 A);
+int GetExpFP16(FP16 A);
+int GetManFP16(FP16 A);
+float GetRefFP16(FP16 N);
+//operator=
+void AssignFP16(FP16* N1, FP16 N2);
+void ConvertFP16tof(FP16 N, float* f);
+void ConvertftoFP16(float f, FP16* N);
+void PrintFP16(FP16 N);
+void PrintFP16_ed(FP16 N);
+void PrintFP16_f(FP16 N);
+//operator+
+void AddFP16(FP16 N1, FP16 N2, FP16* Res);
+
+
+
+int main()
+{
+    FP16 A,B,C;
+    float f1, f2, f3;
+
+    A.sign = 0;
+    A.exp = 16;
+    A.man = 100;
+    B.sign = 0;
+    B.exp = 20; 
+    B.man = 5;  
+    AddFP16(A, B, &C);
+    ConvertFP16tof(A, &f1);
+    ConvertFP16tof(B, &f2);
+    ConvertFP16tof(C, &f3);
+    printf("A = %f\n", f1);
+    PrintFP16_ed(A);
+    printf("\nB = %f\n", f2);
+    PrintFP16_ed(B);
+    printf("\nC = A + B = %f\n", f3); 
+    PrintFP16_ed(C);
+}
+
+
+
+
+
+
+
+int GetSignFP16(FP16 A) { return A.sign; }
+
+int GetExpFP16(FP16 A) { return A.exp; }
+
+int GetManFP16(FP16 A) { return A.man; }
+
+float GetRefFP16(FP16 N) { return N.ref; }
+
+//operator=
+void AssignFP16(FP16* N1, FP16 N2) {
+    N1->sign = N2.sign;
+    N1->exp = N2.exp;
+    N1->man = N2.man;
+    N1->ref = N2.ref;
+}
+
+
+void ConvertFP16tof(FP16 N, float* f) {
+    int shiftExp = (1 << (expLength - 1)) - 1; //смещение   -15 ... 16
+    if (N.sign == 1) (*f *= -1);
+
+    float temp = 1.0f;
+    float temp2 = 1.0f;
+    for (int i = 0; i < manLength; ++i) {
+        temp2 /= 2.0f;
+        if ((N.man & (1 << (manLength - i - 1))) != 0)   temp += temp2;
+    }
+    //printf("%d\n", N.exp - shiftExp);
+    if (N.exp >= shiftExp) *f = (float)(pow(2, (N.exp - shiftExp))) * temp;
+    else *f = (float)(1/(pow(2, (shiftExp - N.exp)))) * temp;
+}
+
+
+void PrintFP16(FP16 N) {
+    int temp;
+    printf("%c", (N.sign + '0'));
+    for (int i = 0; i < expLength; ++i) {
+        if ((N.man & (1 <<( expLength - i-1))) != 0) temp = 1; else temp = 0;
+        printf("%c", (temp + '0'));
+    }
+    for (int i = 0; i < manLength; ++i) {
+        if ((N.exp & (1 << (manLength - i-1))) != 0) temp = 1; else temp = 0;
+        printf("%c", (temp + '0'));
+    }
+}
+
+void PrintFP16_ed(FP16 N) {
+    int temp;
+    printf("%c_", (N.sign + '0'));
+    for (int i = 0; i < expLength; ++i) {
+        if ((N.exp & (1 << (expLength - i-1))) != 0) temp = 1; else temp = 0;
+        printf("%c", (temp + '0'));
+    }
+    printf("_");
+    for (int i = 0; i < manLength; ++i) {
+        if ((N.man & (1 << (manLength - i-1))) != 0) temp = 1; else temp = 0;
+        printf("%c", (temp + '0'));
+    }
+}
+
+void PrintFP16_f(FP16 N) {
+    float temp;
+    ConvertFP16tof(N, &temp);
+    printf("%f", temp);
+}
+
+/*
+1.Порядок результата принимается равным большему из двух порядков.
+2.Производится коррекция мантиссы с меньшим порядком : сдвигается вправо на число порядков, равное разности порядков.
+3.Этап сложения мантисс : производится сложение мантисс как чисел с фиксированной точкой.
+4.Нормализация результата : если результат не нормализован, то нормализуем результат – сдвигаем мантиссу влево на количество разрядов, равное числу нулей до первой значащей цифры; порядок мантиссы при этом уменьшается на это же число.
+
+При сложении мантисс возникает «переполнение».Тогда сдвигаем мантиссу вправо, а порядок увеличивается.
+*/
+
+
+
+void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
+    int diff = abs(N1.exp - N2.exp); //разница порядков
+    int MaxExp;
+    if (N1.exp >= N2.exp) MaxExp = N1.exp;
+    else MaxExp = N2.exp;
+    int temp;
+
+    int shift;
+    if ((manLength - diff) <= 0) shift = 0;
+    else shift = (1 << (manLength - diff));
+
+    temp = (N1.man >> (MaxExp - N1.exp)) + (N2.man >> (MaxExp - N2.exp)) + shift + (1 << manLength);
+    if (temp >= (1 << (manLength+1))) {
+       temp = (temp / 2);
+       MaxExp++;
+    }
+    Res->exp = MaxExp;
+    Res->man = (temp - (1<<manLength));
+
+}
+
+
