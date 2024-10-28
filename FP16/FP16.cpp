@@ -1,4 +1,4 @@
-﻿// FP16.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
+// FP16.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
 //
 
 #include <stdio.h>
@@ -33,28 +33,38 @@ void PrintFP16(FP16 N);
 void PrintFP16_ed(FP16 N);
 //вывод FP16 в виде float
 void PrintFP16_f(FP16 N);
+//вернуть значение FP16 в виде float
+float GetFloat(FP16 N);
 //operator+ (реализован + для нормалов)
 void AddFP16(FP16 N1, FP16 N2, FP16* Res);
+//operator+ v2 с разными знаками(черновой вариант)
+void AddFP16_2(FP16 N1, FP16 N2, FP16* Res);
 //operator* (реализовано для нормалов)
 void MulFP16(FP16 N1, FP16 N2, FP16* Res);
 
+void Test();
 
 int main()
 {
-    FP16 A,B,C;
+    
+    FP16 A,B,C,D;
     float f1, f2, f3;
-    /*
+    
     A.sign = 0;
     A.exp = 17;
     A.man = 25;
-    */
-    f1 = 8;
+    
+    f1 = -17.05;
     ConvertftoFP16(f1, &A);
+    
     B.sign = 0;
     B.exp = 16;
     B.man = 700;
+    
+    f2=-19.01;
+    ConvertftoFP16(f2, &B);
 
-    AddFP16(A, B, &C);
+    AddFP16_2(A, B, &C);
     ConvertFP16tof(A, &f1);
     ConvertFP16tof(B, &f2);
     ConvertFP16tof(C, &f3);
@@ -68,15 +78,23 @@ int main()
     printf("\nerror rate: %f", (f3 - (f1 + f2)));
     printf("\n\n");
 
-    ConvertftoFP16(f3,&C);
-    printf("\n");
+    
 
+
+    printf("\n");
     A.sign = 0;
-    A.exp = 18;
-    A.man = 253;
+    A.exp = 17;
+    A.man = 25;
+    
+    f1 = -17.05;
+    ConvertftoFP16(f1, &A);
+    
     B.sign = 0;
-    B.exp = 20; 
-    B.man = 51;  
+    B.exp = 16;
+    B.man = 700;
+    
+    f2=19.01f;
+    ConvertftoFP16(f2, &B);
 
     MulFP16(A, B, &C);
     ConvertFP16tof(A, &f1);
@@ -90,6 +108,12 @@ int main()
     PrintFP16_ed(C);
     printf("\nthe result when using floats: %f", (f1 * f2));
     printf("\nerror rate: %f", (f3 - (f1 * f2)));
+    ConvertftoFP16(f1*f2, &D);
+    printf("\n");
+    
+    //Test();
+    
+    
 }
 
 
@@ -126,8 +150,8 @@ void ConvertFP16tof(FP16 N, float* f) {
         if ((N.man & (1 << (manLength - i - 1))) != 0)   temp += temp2;
     }
     //printf("%d\n", N.exp - shiftExp);
-    if (N.exp >= shiftExp) *f = (float)(pow(2, (N.exp - shiftExp))) * temp;
-    else *f = (float)(1/(pow(2, (shiftExp - N.exp)))) * temp;
+    if (N.exp >= shiftExp) *f = pow(-1,N.sign)*(float)(pow(2, (N.exp - shiftExp))) * temp;
+    else *f = pow(-1,N.sign)*(float)(1/(pow(2, (shiftExp - N.exp)))) * temp;
 }
 
 
@@ -183,6 +207,42 @@ void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
     }
     Res->exp = MaxExp;
     Res->man = (temp - (1<<manLength));
+}
+
+void AddFP16_2(FP16 N1, FP16 N2, FP16* Res) {
+    int diff = abs(N1.exp - N2.exp); //разница порядков
+    int MaxExp;
+    int sign_Min,sign_Max;
+    if (N1.exp >= N2.exp) {
+        MaxExp = N1.exp;
+        sign_Min=N2.sign;
+        sign_Max=N1.sign;
+    }
+    else {
+        MaxExp = N2.exp;
+        sign_Min=N1.sign;
+        sign_Max=N2.sign;
+    }
+    int temp;
+    
+    int shift;
+    if ((manLength - diff) <= 0) shift = 0;
+    else shift = (1 << (manLength - diff));
+
+    temp = pow(-1,N1.sign)*(N1.man >> (MaxExp - N1.exp)) + pow(-1,N2.sign)*(N2.man >> (MaxExp - N2.exp)) + pow(-1,sign_Min)*shift + pow(-1,sign_Max)*(1 << manLength);
+    if (temp<0) Res->sign = 1;
+    else Res->sign = 0;
+    temp=abs(temp);
+    while(temp<(1<<manLength)){
+        temp*=2;
+        MaxExp--;
+    }
+    if (temp >= (1 << (manLength+1))) {
+       temp = (temp / 2);
+       MaxExp++;
+    }
+    Res->exp = MaxExp;
+    Res->man = (temp - (1<<manLength));
 
 }
 
@@ -227,7 +287,54 @@ void ConvertftoFP16(float f, FP16* N){
         N->man = N->man + (bites[9 + i] * (1 << (manLength - 1 - i)));
     }
     //PrintFP16_ed(*N);
-
-
-
 }
+
+float GetFloat(FP16 N){
+    float temp;
+    ConvertFP16tof(N, &temp);
+    return temp;
+}
+
+
+
+
+
+
+
+
+
+/*
+void Test(){
+    //
+    int flag = 0;
+    FP16 A,B,C,D;
+    float f1,f2,f3,f4,f5;
+    //for(int _sign = 0; _sign<2;_sign++){
+    for(int _exp = 20;_exp<32;_exp++){
+        for(int _man = 0; _man<1024;_man++){
+            if (flag!=1){
+                //A.sign=B.sign=_sign;
+                A.sign=B.sign=0;
+                A.exp=B.exp=_exp;
+                A.man=B.man=_man;
+                
+                AddFP16(A, B, &C);
+                ConvertFP16tof(A, &f1);
+                ConvertFP16tof(B, &f2);
+                ConvertftoFP16(f1+f2, &D);
+                //C - сумма fp16
+                //D - сумма float
+                PrintFP16_ed(A);
+                printf("\n");
+                if(GetFloat(C)!=GetFloat(D)) {
+                    printf("\nbreak");
+                    printf("\n%f %f\n",GetFloat(C),GetFloat(D));
+                    flag=1;
+                }
+            }
+        }
+    }
+    
+}
+
+*/
