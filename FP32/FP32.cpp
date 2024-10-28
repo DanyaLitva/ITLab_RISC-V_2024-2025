@@ -27,10 +27,24 @@ class FP32 {
 	bool isfpnan() const noexcept {
 		return ((getexp() == 0xFF) && getmantissa() != 0);
 	}
-	uint64_t roundDiv(uint64_t a, uint64_t qbits) const noexcept {
+	uint64_t roundDiv64(uint64_t a, uint64_t qbits) const noexcept {
 		uint64_t tmp = (a % (uint64_t(1) << qbits)) >= (uint64_t(1) << (qbits - 1));
 		return (a >> qbits) + tmp;
 	}
+	int32_t roundDiv32(int32_t a, int32_t qbits) const noexcept {
+		if (qbits >= 32) return 0;
+		int32_t unit;
+		if (a >= 0) unit = 1;
+		else unit = -1;
+		//                              '>' NOT '>=' mathematically
+		int32_t tmp = (a % (1 << qbits)) >= (unit << (qbits - 1));
+		return (a >> qbits) + tmp;
+	}
+	int32_t myabs(int32_t a) {
+		if (a > 0) return -a;
+		return a;
+	}
+
 public:
 	float example;
 	uint32_t data;
@@ -69,142 +83,82 @@ public:
 		cout << bitset<32>(data) << endl;
 	}
 
-	FP32 add(const FP32 l, const FP32 r) /*noexcept*/ {
-		FP32 res;
-		res.example = l.example + r.example;
-		uint16_t sign, normal_unit = 0;
-		//NaN - checking
-		int16_t el = l.getexp(), er = r.getexp();
-		uint16_t ml = l.getmantissa(), mr = r.getmantissa();
-		int16_t shift = el - er;
-		//cout << endl << l.data << " " << r.data << " " << int(ml) << " " << int(mr) << " " << el << " " << er << endl;
-		if (shift < 0) {
-			res.data = er << 7;
-			ml >>= -shift;
-			if (7 + shift >= 0)
-				normal_unit = uint16_t(1) << (7 + shift);
-			//subnormal_unit = !ml;
-		}
-		else if (shift > 0) {
-			res.data = el << 7;
-			mr >>= shift;
-			if (7 - shift >= 0)
-				normal_unit = uint16_t(1) << (7 - shift);
-			//subnormal_unit = !mr;
-		}
-		else {
-			//overflow_unit = (er != 0);
-			//res.data = (er + overflow_unit) << 7; //er << 7 if subnormals, er + 1 else
-			res.data = er << 7;
-			normal_unit = uint16_t(1) << 7;
-			//subnormal_unit = 0;
-		}
-		//res.data += ((ml + mr) >> overflow_unit) + (subnormal_unit << 6);
-		uint16_t mres = ml + mr + normal_unit;
-		if (mres >> 7) {
-			uint16_t shiftres = mres >> 7;
-			res.data += (mres & 0xFF80);
-			res.data += (mres & 0x007F) >> shiftres;
-		}
-		else {
-			res.data += mres;
-		}
-		cout << endl << ml << " " << mr << " " << normal_unit << " " << res.data << endl;
-		//res.data += ((mres & 0x7F) >> (mres >> 7)) + (mres & 0xFF80); //
-
-		return res;
-	}
-
-	FP32 add2(const FP32 l, const FP32 r) noexcept {
+	FP32 add2(const FP32 l, const FP32 r) noexcept { //Add of normals is correct
 		FP32 res;
 		res.example = l.example + r.example;
 		uint32_t sign;
 		FP32 fpinf;
 		FP32 fpnan;
-		fpinf.data = 0x7f800000;
+		fpinf.data = 0x7f800000 + (l.getsign() << 31);
 		fpnan.data = 0x7f800001;
-		fpinf.example = INFINITY;
-		fpnan.example = NAN;
+		fpinf.example = res.example;
+		fpnan.example = res.example;
 		if (l.isfpnan() || r.isfpnan()) {
 			return fpnan;
 		}
 		if (l.isfpinf() || r.isfpinf()) {
-			return fpnan;
+			if (l.getsign() ^ r.getsign()) return fpnan;
+			else return fpinf;
 		}
-		//inf - inf = nan
+		// 0 +- 0 interactions?
 
-		int32_t el = l.getexp(), er = r.getexp();
-		uint32_t ml = l.getmantissa(), mr = r.getmantissa();
-		if (el >= er) {
-			
+		int32_t el = l.getexp(), er = r.getexp(), eres;
+		int32_t ml = l.getmantissa() + (int32_t(l.getexp() > 0) << 23), mr = r.getmantissa() + (int32_t(r.getexp() > 0) << 23), mres;
+		//          (l.getmantissa() + (uint64_t(l.getexp() > 0) << 23))    (r.getmantissa() + (uint64_t(r.getexp() > 0) << 23)); //bad type (m1*m2)/2^23 = m1/2^23 * m2
+		if (l.getsign()) ml = -ml;
+		if (r.getsign()) mr = -mr;
+
+		if (el > er) {
+			eres = el;
+			mres = ml + roundDiv32(mr, el - er);
 		}
+
 		else if (er > el) {
-
-		}
-		//передавать в roundDiv число - разность, а потом отбрасывать деление на числа с длиной битов меньше 1?
-
-
-	}
-
-	FP32 mul(const FP32 l, const FP32 r) noexcept {
-		FP32 res;
-		res.example = l.example * r.example;
-		FP32 bfinf;
-		FP32 bfnan;
-		bfinf.data = 0x7f80;
-		bfnan.data = 0x7f80 + 1;
-		bfinf.example = INFINITY;
-		bfnan.example = NAN;
-		bool too_low = false;
-		//if (l.isbfinf() || r.isbfinf()) {
-		//	return bfinf;
-		//}
-		//if (l.isbfnan() || r.isbfnan()) {
-		//	return bfnan;
-		//}
-
-		uint16_t sign = l.getsign() ^ r.getsign();
-		uint16_t ml = l.getmantissa(), mr = r.getmantissa();
-		int16_t el = l.getexp(), er = r.getexp();
-
-		if ((el + er - int16_t(127)) > 0) { // >= if denormals
-			res.data = (el + er - 127) << 7;
-		}
-		else if ((el + er - int16_t(127)) >= -7) { // matches 2^-133 // -6 -> -7
-			//if ((el + er - int16_t(127)) != -7) 
-			//	res.data = uint16_t(1) << (el + er - uint16_t(121));
-			//else 
-				res.data = 0;
-			too_low = true;
+			eres = er;
+			//cout << dec << "2 " << mr << " " << ml << " " << roundDiv32(ml, er - el) << endl;
+			mres = mr + roundDiv32(ml, er - el);
+			//cout << mres << endl;
 		}
 		else {
+			eres = el;
+			mres = ml + mr;
+		}
+		//передавать в roundDiv число - разность, а потом отбрасывать деление на числа с длиной битов меньше 1? Что это? Кто это написал? Аа, идея ясна но она фигня
+
+		if (mres < 0) {
+			res.data = int32_t(1) << 31;
+			mres = -mres;
+		}
+		else /*if (mres > 0)*/ {
 			res.data = 0;
+		}
+		//else {
+		//	mres = 1; // sad..
+		//}
+
+		while (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used
+			++eres;
+			if (eres > 0)
+				mres >>= 1;
+			//mres = roundDiv(mres, 1); //works correct with simple div
+		}
+
+		while (mres < (int32_t(1) << 23) && eres >= 0) {
+			--eres;
+			if (eres > 0) //subnormals
+				mres <<= 1;
+		}
+		
+		if (eres >= 0xFF) {
+			res.data += 0xFF << 23;
 			return res;
 		}
-		// CHECK INPUT SUBNORMALS
-		uint16_t mres = ml + mr + ((ml * mr) >> 7);
-		if ((mres >> 7)) {
-			uint16_t shiftres = mres >> 7;
-			res.data += (mres & 0xFF80);
-			res.data += (mres & 0x007F) >> shiftres;
-		}
-		else {
+		res.data += eres << 23;
+		if (eres > 0)
+			res.data += mres - (int32_t(1) << 23);
+		else
 			res.data += mres;
-		}
 
-		if (res.data >> 15) {
-			return bfinf;
-		}
-		if (!res.getexp() || too_low) { //������: � ���������� ��������� ������������ �������� ��� ������� ��������� (-7) ����� ���������
-			// from normal to subnormal
-			//cout << endl << el + er - 127 << " " << res.data << endl;
-			//if ((127 + 1 - el - er) < )
-			res.data >>= (127 + 1 - el - er);
-			//cout << res.data << endl;
-			if (el + er - 127 + 6 >= 0) {
-				res.data += uint16_t(1) << (el + er - 127 + 6);
-			}
-		}
 		return res;
 	}
 
@@ -217,9 +171,9 @@ public:
 		FP32 fpnan;
 		fpinf.data = 0x7f800000 + ((l.getsign() ^ r.getsign()) << 31);
 		fpnan.data = 0x7f800001 + ((l.getsign() ^ r.getsign()) << 31);
-		fpinf.example = INFINITY;
-		if (l.getsign() ^ r.getsign()) fpinf.example = -INFINITY;
-		fpnan.example = NAN;
+		fpinf.example = res.example;
+		//if (l.getsign() ^ r.getsign()) fpinf.example = -INFINITY;
+		fpnan.example = res.example;
 
 		if (l.isfpinf() || r.isfpinf()) {
 			return fpinf;
@@ -238,7 +192,7 @@ public:
 			--eres;
 			mres <<= 1;
 		}
-		mres = roundDiv(mres, 23);
+		mres = roundDiv64(mres, 23);
 		
 		
 		while (mres >= (uint64_t(1) << 24)) { //instruction to count 00001***mant zeros can be used
@@ -337,21 +291,21 @@ public:
 		return false;
 	}
 	bool run_specific() {
-		vector<uint32_t> vl = { 0xbadf8, 0x34ebd218, 0x340106e7, 0x800000, 0xbadf8 };
-		vector<uint32_t> vr = { 0x40026e28, 0x801010a0, 0x0, 0x3f010130, 0x40e05790 };
+		vector<uint32_t> vl = {};
+		vector<uint32_t> vr = {};
 		size_t from = 0;
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i];
 			l = vl[i];
 			r = vr[i];
 			//l = l.add(l, r);
-			l = l.mul2(l, r);
-			//l = l.add2(l, r);
+			//l = l.mul2(l, r);
+			l = l.add2(l, r);
 			//cout << endl << float(BF16(l)) << " " << float(BF16(r)) << endl;
 			//cout << l.example << " " << float(l) << endl;
 			if (/*!isnan(l.example)*/ (l.example == l.example) && !equal_prec(FP32(l.example).data, l.data, 1)) {
 				//cout << " ADD ERROR\n";
-				cout << " MUL ERROR\n";
+				cout << " ERROR\n";
 				cout << l.example << " expected, " << float(l) << " instead\n";
 				FP32(l.example).print();
 				l.print();
@@ -363,21 +317,21 @@ public:
 	}
 	bool run() {
 		uint64_t lc, rc;
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 7654) {
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 76543) {
 		//#pragma omp parallel for
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 7654) {
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 76543) {
 				//cout << hex << lc << ", " << rc;
 				//if (lc < 0x00800000 || rc < 0x00800000) continue;
 				l = uint32_t(lc);
 				r = uint32_t(rc);
-				//l = l.add2(l, r);
-				l = l.mul2(l, r);
+				l = l.add2(l, r);
+				//l = l.mul2(l, r);
 				//cout << endl << float(BF16(l)) << " " << float(BF16(r)) << endl;
 				//cout << l.example << " " << float(l) << endl;
 				if (/*!isnan(l.example)*/ (l.example == l.example) && !equal_prec(FP32(l.example).data, l.data, 1)) {
 					//cout << " ADD ERROR\n";
 					cout << hex << endl << lc << ", " << rc;
-					cout << " MUL ERROR\n";
+					cout << " ERROR\n";
 					cout << l.example << " expected, " << float(l) << " instead\n";
 					FP32(l.example).print();
 					l.print();
@@ -481,10 +435,24 @@ int main() {
 	//cout << duration.count() << endl;
 	//mat C = mmul(B, A);
 	//l(C);
+
+
 	bool flag = true;
 	Alltests tests;
 	//if (flag) flag = tests.run_specific();
 	if (flag) flag = tests.run();
 	cout << endl << "ENDED" << endl;
+
+
+	//int a = -100;
+	//cout << a << endl;
+	//cout << (a >> 1) << endl;
+	//cout << (a >> 2) << endl;
+	//cout << (a >> 3) << endl;
+	//cout << (a >> 4) << endl;
+	//cout << (-99 % 16) << endl;
+	//cout << (-99 >> 4) << endl;
+
+
 	return 0;
 }
