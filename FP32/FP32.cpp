@@ -135,8 +135,12 @@ public:
 
 		int32_t el = l.getexp(), er = r.getexp();
 		uint32_t ml = l.getmantissa(), mr = r.getmantissa();
+		if (el >= er) {
+			
+		}
+		else if (er > el) {
 
-
+		}
 		//передавать в roundDiv число - разность, а потом отбрасывать деление на числа с длиной битов меньше 1?
 
 
