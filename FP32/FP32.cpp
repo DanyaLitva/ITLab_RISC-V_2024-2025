@@ -135,18 +135,25 @@ public:
 		//else {
 		//	mres = 1; // sad..
 		//}
-		if (eres == 0 && mres >= (int32_t(1) << 23)) { // from subnormals to normals
+		if (eres == 0 && mres >= (int32_t(1) << 23)) { // from subnormals to normals //
+			cout << "1" << endl;
+			//cout << hex << mres << endl;
 			++eres;
+			//mres -= (int32_t(1) << 23);
+			//mres >>= 1;
+			//mres += (int32_t(1) << 23);
 		}
 
-		while (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used
+		while (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used //one operation! // just an if
+			cout << "2" << endl;
 			++eres;
 			//if (eres > 0) // non correct
 			mres >>= 1;
 			//mres = roundDiv(mres, 1); //works correct with simple div
 		}
 
-		while (mres < (int32_t(1) << 23) && eres > 0) {
+		while (mres < (int32_t(1) << 23) && eres > 0) { // just an if
+			cout << "3" << endl;
 			--eres;
 			if (eres > 0) //subnormals
 				mres <<= 1;
@@ -197,8 +204,8 @@ public:
 		}
 		mres = roundDiv64(mres, 23);
 		
-		
-		while (mres >= (uint64_t(1) << 24)) { //instruction to count 00001***mant zeros can be used
+		while (mres >= (uint64_t(1) << 24)) { //instruction to count 00001***mant zeros can be used. mb only 1 shift?
+		// just an if
 			++eres;
 			mres >>= 1;
 			//mres = roundDiv(mres, 1); //works correct with simple div
