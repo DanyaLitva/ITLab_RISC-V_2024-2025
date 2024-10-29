@@ -46,7 +46,6 @@ void Test();
 
 int main()
 {
-    
     FP16 A,B,C,D;
     float f1, f2, f3;
     
@@ -86,14 +85,14 @@ int main()
     A.exp = 17;
     A.man = 25;
     
-    f1 = -17.05;
+    f1 = 150.0f;
     ConvertftoFP16(f1, &A);
     
     B.sign = 0;
     B.exp = 16;
     B.man = 700;
     
-    f2=19.01f;
+    f2=300.0f;
     ConvertftoFP16(f2, &B);
 
     MulFP16(A, B, &C);
@@ -149,7 +148,7 @@ void ConvertFP16tof(FP16 N, float* f) {
         temp2 /= 2.0f;
         if ((N.man & (1 << (manLength - i - 1))) != 0)   temp += temp2;
     }
-    //printf("%d\n", N.exp - shiftExp);
+    printf("%d\n", N.exp - shiftExp);
     if (N.exp >= shiftExp) *f = pow(-1,N.sign)*(float)(pow(2, (N.exp - shiftExp))) * temp;
     else *f = pow(-1,N.sign)*(float)(1/(pow(2, (shiftExp - N.exp)))) * temp;
 }
@@ -249,20 +248,28 @@ void AddFP16_2(FP16 N1, FP16 N2, FP16* Res) {
 
 void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
     int shiftExp = (1 << (expLength - 1)) - 1; //смещение   -15 ... 16
-    int temp = ((N1.man * N2.man)/(1<<manLength)) + N1.man + N2.man;
+    int temp2 = ((N1.man * N2.man)/(1<<manLength)); //сохранять, это последнийи бит разложить на / и %
+    int temp = ((N1.man * N2.man)/(1<<manLength)) + N1.man + N2.man  + (1<<manLength);
 
     Res->exp = ((N1.exp-shiftExp) + (N2.exp-shiftExp) + shiftExp);
-    int temp2 = (1 << manLength);
-    while (temp >= (1<<(manLength))) {
+    //int temp2 = (1 << manLength);
+    /*while (temp >= (1<<(manLength))) {
         temp = (temp / 2);
         temp2 /= 2;
         temp -= temp2;
+        Res->exp++;
+    }*/
+    if(temp>= + (1<<(manLength+1))) {
+        temp/=2; //и здесь один бит теряется
         Res->exp++;
     }
     Res->man = (temp);
     Res->sign = N1.sign + N2.sign;
 }
 
+
+//прибавить 1024 к temp
+//если больше 2048 делим все на пополам
 char bytes[sizeof(float)];
 char bites[sizeof(float) * 8];
 //float: 1:8:23
@@ -303,7 +310,7 @@ float GetFloat(FP16 N){
 
 
 
-/*
+
 void Test(){
     //
     int flag = 0;
@@ -318,17 +325,18 @@ void Test(){
                 A.exp=B.exp=_exp;
                 A.man=B.man=_man;
                 
-                AddFP16(A, B, &C);
+                MulFP16(A, B, &C);
                 ConvertFP16tof(A, &f1);
                 ConvertFP16tof(B, &f2);
-                ConvertftoFP16(f1+f2, &D);
+                ConvertftoFP16(f1*f2, &D);
                 //C - сумма fp16
                 //D - сумма float
                 PrintFP16_ed(A);
-                printf("\n");
+                //printf("\n");
+                
                 if(GetFloat(C)!=GetFloat(D)) {
                     printf("\nbreak");
-                    printf("\n%f %f\n",GetFloat(C),GetFloat(D));
+                    //printf("%f %f\n",GetFloat(C),GetFloat(D));
                     flag=1;
                 }
             }
@@ -337,4 +345,4 @@ void Test(){
     
 }
 
-*/
+
