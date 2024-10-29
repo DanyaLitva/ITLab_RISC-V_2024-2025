@@ -100,7 +100,9 @@ public:
 			if (l.getsign() ^ r.getsign()) return fpnan;
 			else return fpinf;
 		}
-		// 0 +- 0 interactions?
+		if (l.data == 0x80000000 && r.data == 0x80000000) { // bad
+			return l;
+		}
 
 		int32_t el = l.getexp(), er = r.getexp(), eres;
 		int32_t ml = l.getmantissa() + (int32_t(l.getexp() > 0) << 23), mr = r.getmantissa() + (int32_t(r.getexp() > 0) << 23), mres;
@@ -111,19 +113,19 @@ public:
 		// sum of a normal and of a subnormal
 
 		if (el > er) {
-			if (er == 0) 
+			if (er == 0) // subnormals
 				++er;
 			eres = el;
 			mres = ml + roundDiv32(mr, el - er);
+			//mres = roundDiv32((ml << (el - er)) + mr, el - er);
 		}
 
 		else if (er > el) {
-			if (el == 0) 
+			if (el == 0) // subnormals
 				++el;
 			eres = er;
-			//cout << dec << "2 " << mr << " " << ml << " " << roundDiv32(ml, er - el) << endl;
 			mres = mr + roundDiv32(ml, er - el);
-			//cout << mres << endl;
+			//mres = roundDiv32((mr << (er - el)) + ml, er - el);
 		}
 		else {
 			eres = el;
@@ -142,14 +144,13 @@ public:
 		//	mres = 1; // sad..
 		//}
 		while (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used //one operation! // just an if
-			if (eres > 0 ) // subnormals
+			if (eres > 0) // subnormals
 				mres >>= 1;
 			++eres;
-			//if (eres > 0) // non correct
 			//mres = roundDiv(mres, 1); //works correct with simple div
 		}
-
-		while (mres < (int32_t(1) << 23) && eres > 0) { // just an if
+			
+		while (mres < (int32_t(1) << 23) && eres > 0) { // mb error is here or it is not
 			--eres;
 			if (eres > 0) //subnormals
 				mres <<= 1;
@@ -323,9 +324,9 @@ public:
 	}
 	bool run() {
 		uint64_t lc, rc;
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 76543) {
+		for (lc = 0x80000000; lc <= 0xFFFFFFFF; lc += 76543) {
 		//#pragma omp parallel for
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 76543) {
+			for (rc = 0x00000000; rc <= 0x7FFFFFFF; rc += 76543) {
 				//cout << hex << lc << ", " << rc;
 				//if (lc < 0x00800000 || rc < 0x00800000) continue;
 				l = uint32_t(lc);
