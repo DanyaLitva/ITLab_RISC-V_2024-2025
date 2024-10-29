@@ -108,12 +108,18 @@ public:
 		if (l.getsign()) ml = -ml;
 		if (r.getsign()) mr = -mr;
 
+		// sum of a normal and of a subnormal
+
 		if (el > er) {
+			if (er == 0) 
+				++er;
 			eres = el;
 			mres = ml + roundDiv32(mr, el - er);
 		}
 
 		else if (er > el) {
+			if (el == 0) 
+				++el;
 			eres = er;
 			//cout << dec << "2 " << mr << " " << ml << " " << roundDiv32(ml, er - el) << endl;
 			mres = mr + roundDiv32(ml, er - el);
@@ -135,25 +141,15 @@ public:
 		//else {
 		//	mres = 1; // sad..
 		//}
-		if (eres == 0 && mres >= (int32_t(1) << 23)) { // from subnormals to normals //
-			cout << "1" << endl;
-			//cout << hex << mres << endl;
-			++eres;
-			//mres -= (int32_t(1) << 23);
-			//mres >>= 1;
-			//mres += (int32_t(1) << 23);
-		}
-
 		while (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used //one operation! // just an if
-			cout << "2" << endl;
+			if (eres > 0 ) // subnormals
+				mres >>= 1;
 			++eres;
 			//if (eres > 0) // non correct
-			mres >>= 1;
 			//mres = roundDiv(mres, 1); //works correct with simple div
 		}
 
 		while (mres < (int32_t(1) << 23) && eres > 0) { // just an if
-			cout << "3" << endl;
 			--eres;
 			if (eres > 0) //subnormals
 				mres <<= 1;
