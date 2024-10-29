@@ -2,7 +2,7 @@
 #include <bitset>
 #include <cmath>
 #include <vector>
-#include <omp.h>
+//#include <omp.h>
 #include <iomanip>
 #include <random>
 #include <ctime>
@@ -135,15 +135,18 @@ public:
 		//else {
 		//	mres = 1; // sad..
 		//}
+		if (eres == 0 && mres >= (int32_t(1) << 23)) { // from subnormals to normals
+			++eres;
+		}
 
 		while (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used
 			++eres;
-			if (eres > 0)
-				mres >>= 1;
+			//if (eres > 0) // non correct
+			mres >>= 1;
 			//mres = roundDiv(mres, 1); //works correct with simple div
 		}
 
-		while (mres < (int32_t(1) << 23) && eres >= 0) {
+		while (mres < (int32_t(1) << 23) && eres > 0) {
 			--eres;
 			if (eres > 0) //subnormals
 				mres <<= 1;
