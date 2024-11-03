@@ -18,7 +18,7 @@ class FP32 {
 	int32_t getexp() const noexcept {
 		return (data << 1) >> 24;
 	}
-	uint64_t getmantissa() const noexcept {
+	uint32_t getmantissa() const noexcept {
 		return data & 0x007FFFFF;
 	}
 	bool isfpinf() const noexcept {
@@ -32,16 +32,19 @@ class FP32 {
 		return (a >> qbits) + tmp;
 	}
 	int32_t roundDiv32(int32_t a, int32_t qbits) const noexcept {
-		if (qbits >= 32) return 0;
+		if (qbits >= 32 || a == 0) return 0; // a == 0 bad
+		if (qbits == 0) return a;
+		//return roundDiv32v2(a, qbits); //
 		int32_t unit;
 		if (a >= 0) unit = 1;
 		else unit = -1;
-		//                              '>' NOT '>=' mathematically
-		int32_t tmp = (a % (1 << qbits)) >= (unit << (qbits - 1));
+		//                              '>' NOT '>=' mathematically for '-'
+		int32_t tmp = (a % (1 << qbits)) >= (unit * (1 << (qbits - 1)));
+		if ((a % (1 << qbits)) == 0) tmp = 0; // very bad
 		return (a >> qbits) + tmp;
 	}
-	int32_t myabs(int32_t a) {
-		if (a > 0) return -a;
+	int32_t roundDiv32v2(int32_t a, int32_t qbits) const noexcept {
+		a >>= qbits;
 		return a;
 	}
 
@@ -112,11 +115,16 @@ public:
 
 		// sum of a normal and of a subnormal
 
-		if (el > er) {
+		if (el > er) { // here
 			if (er == 0) // subnormals
 				++er;
 			eres = el;
+			//cout << dec << endl << ml << " " << mr << " " << el - er << " " << roundDiv32(mr, el - er) << endl;
 			mres = ml + roundDiv32(mr, el - er);
+			//cout << mres;
+			//if (el - er <= 32) mres = ml + mr / (1 << (el - er)); //why?
+			//	if ((ml % (1 << (el - er)) >= )
+			//else mres = ml;
 			//mres = roundDiv32((ml << (el - er)) + mr, el - er);
 		}
 
@@ -124,7 +132,9 @@ public:
 			if (el == 0) // subnormals
 				++el;
 			eres = er;
-			mres = mr + roundDiv32(ml, er - el);
+			//cout << dec << endl << ml << " " << mr << " " << er - el << " " << roundDiv32(ml, er - el) << endl;
+			//mres = mr + roundDiv32(ml, er - el);
+			cout << mres << endl;
 			//mres = roundDiv32((mr << (er - el)) + ml, er - el);
 		}
 		else {
@@ -143,9 +153,11 @@ public:
 		//else {
 		//	mres = 1; // sad..
 		//}
-		while (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used //one operation! // just an if
-			if (eres > 0) // subnormals
-				mres >>= 1;
+		if (mres >= (int32_t(1) << 24)) { //instruction to count 00001***mant zeros can be used //one operation! // just an if
+			if (eres > 0) { // subnormals
+				//mres >>= 1; // it seems like I should keep one more bit to increase precision. I should rewrite all the code
+				mres = roundDiv32(mres, 1);
+			}
 			++eres;
 			//mres = roundDiv(mres, 1); //works correct with simple div
 		}
@@ -205,7 +217,7 @@ public:
 		// just an if
 			++eres;
 			mres >>= 1;
-			//mres = roundDiv(mres, 1); //works correct with simple div
+			//mres = roundDiv64(mres, 1); //works correct with simple div // it will break my while
 		}
 
 		if (eres > 0) {
@@ -242,6 +254,7 @@ public:
 			*this -= bf;
 			return *this;
 		}
+		return *this;
 	}
 	FP32& operator-= (const FP32& bf) noexcept {
 		uint16_t sign;
@@ -256,12 +269,13 @@ public:
 			*this -= bf;
 			return *this;
 		}
+		return *this;
 	}
 	FP32& operator*= (const FP32& bf) noexcept {
-
+		return *this;
 	}
 	FP32& operator/= (const FP32& bf) noexcept {
-
+		return *this;
 	}
 	FP32 operator+ (const FP32& bf) const noexcept {
 		FP32 res = *this;
@@ -286,9 +300,9 @@ public:
 };
 
 class Alltests {
+	public:
 	FP32 l;
 	FP32 r;
-public:
 	Alltests() = default;
 	bool equal_prec(uint32_t a, uint32_t b, uint32_t prec) {
 		//if (a == 0 && b == 0x80000000 || a == 0x80000000 && b == 0) return true;
@@ -298,8 +312,8 @@ public:
 		return false;
 	}
 	bool run_specific() {
-		vector<uint32_t> vl = {};
-		vector<uint32_t> vr = {};
+		vector<uint32_t> vl = {0x380fa};
+		vector<uint32_t> vr = {0x17f1570};
 		size_t from = 0;
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i];
@@ -310,7 +324,7 @@ public:
 			l = l.add2(l, r);
 			//cout << endl << float(BF16(l)) << " " << float(BF16(r)) << endl;
 			//cout << l.example << " " << float(l) << endl;
-			if (/*!isnan(l.example)*/ (l.example == l.example) && !equal_prec(FP32(l.example).data, l.data, 1)) {
+			if (/*!isnan(l.example)*/ (l.example == l.example) && !equal_prec(FP32(l.example).data, l.data, 0)) {
 				//cout << " ADD ERROR\n";
 				cout << " ERROR\n";
 				cout << l.example << " expected, " << float(l) << " instead\n";
@@ -324,9 +338,9 @@ public:
 	}
 	bool run() {
 		uint64_t lc, rc;
-		for (lc = 0x80000000; lc <= 0xFFFFFFFF; lc += 76543) {
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 76542) {
 		//#pragma omp parallel for
-			for (rc = 0x00000000; rc <= 0x7FFFFFFF; rc += 76543) {
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 76542) {
 				//cout << hex << lc << ", " << rc;
 				//if (lc < 0x00800000 || rc < 0x00800000) continue;
 				l = uint32_t(lc);
@@ -337,7 +351,7 @@ public:
 				//cout << l.example << " " << float(l) << endl;
 				if (/*!isnan(l.example)*/ (l.example == l.example) && !equal_prec(FP32(l.example).data, l.data, 1)) {
 					//cout << " ADD ERROR\n";
-					cout << hex << endl << lc << ", " << rc;
+					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example;
 					cout << " ERROR\n";
 					cout << l.example << " expected, " << float(l) << " instead\n";
 					FP32(l.example).print();
