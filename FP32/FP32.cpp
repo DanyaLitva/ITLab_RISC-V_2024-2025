@@ -78,6 +78,10 @@ public:
 		uint32_t tmp = data;
 		return reinterpret_cast<float*>(&tmp)[0];
 	}
+	operator double() const noexcept {
+		uint32_t tmp = data;
+		return double(reinterpret_cast<float*>(&tmp)[0]);
+	}
 	FP32(uint32_t t) noexcept {
 		data = t;
 		example = *this;
@@ -109,7 +113,6 @@ public:
 
 		int32_t el = l.getexp(), er = r.getexp(), eres;
 		int32_t ml = l.getmantissa() + (int32_t(l.getexp() > 0) << 23), mr = r.getmantissa() + (int32_t(r.getexp() > 0) << 23), mres;
-		//          (l.getmantissa() + (uint64_t(l.getexp() > 0) << 23))    (r.getmantissa() + (uint64_t(r.getexp() > 0) << 23)); //bad type (m1*m2)/2^23 = m1/2^23 * m2
 		if (l.getsign()) ml = -ml;
 		if (r.getsign()) mr = -mr;
 
@@ -119,7 +122,6 @@ public:
 			if (er == 0) // subnormals
 				++er;
 			eres = el;
-			//cout << dec << endl << ml << " " << mr << " " << el - er << " " << roundDiv32(mr, el - er) << endl;
 			mres = ml + roundDiv32(mr, el - er);
 			//cout << mres;
 			//if (el - er <= 32) mres = ml + mr / (1 << (el - er)); //why?
@@ -132,7 +134,6 @@ public:
 			if (el == 0) // subnormals
 				++el;
 			eres = er;
-			//cout << dec << endl << ml << " " << mr << " " << er - el << " " << roundDiv32(ml, er - el) << endl;
 			//mres = mr + roundDiv32(ml, er - el);
 			cout << mres << endl;
 			//mres = roundDiv32((mr << (er - el)) + ml, er - el);
@@ -141,7 +142,7 @@ public:
 			eres = el;
 			mres = ml + mr;
 		}
-		//передавать в roundDiv число - разность, а потом отбрасывать деление на числа с длиной битов меньше 1? Что это? Кто это написал? Аа, идея ясна но она фигня
+		
 
 		if (mres < 0) {
 			res.data = int32_t(1) << 31;
@@ -181,6 +182,82 @@ public:
 		return res;
 	}
 
+	// masks:
+	// sign: 0x80000000
+	// exp:  0x7F800000
+	// mant: 0x007FFFFF
+
+	static uint32_t add3(uint32_t l, uint32_t r, float& example) noexcept {
+		example = float(FP32(l)) + float(FP32(r)); //
+		uint32_t res;
+		uint32_t el = (l & 0x7F800000) >> 23;
+		uint32_t er = (r & 0x7F800000) >> 23;
+		uint32_t eres;
+		int32_t ml = (l & 0x007FFFFF + ((el > 0) << 23)) << 1; // one extra bit
+		int32_t mr = (r & 0x007FFFFF + ((er > 0) << 23)) << 1;
+		int32_t mres;
+		if (l >> 31) ml = -ml; // how to make it faster?
+		if (r >> 31) mr = -mr;
+
+		if (el == 0x7F800000 || er == 0x7F800000) { // nan and inf checking
+			if (ml != 0 && el == 0x7F800000) // if left is nan
+				return l;
+			if (mr != 0 && er == 0x7F800000) // if right is nan
+				return r;
+			if (l == r)
+				return l;
+			else
+				return r + 1; // return nan if inf - inf
+		}
+
+		if (el > er) { // calulate exponent and mantissa making exponents equal each other
+			er += (er == 0);
+			eres = el;
+			if (el - er >= 32) mres = ml;
+			else mres = ml + (mr >> (el - er));
+		}
+		else {
+			el += (el == 0);
+			eres = er;
+			if (er - el >= 32) mres = mr;
+			else mres = mr + (ml >> (er - el));
+		}
+
+		if (mres < 0) { // calculate mantissa and a sign
+			res = 0x80000000;
+			mres = -mres;
+		}
+		else {
+			res = 0;
+		}
+
+		if (mres >= 0x02000000) { // if mres is greater than a 2^23 (2^24)
+			mres >>= (eres > 0); // subnormals
+			++eres;
+		}
+		while (mres < 0x01000000 && eres > 0) { // if mres is less than a 2^23 (2^24)
+			--eres;
+			mres <<= (eres > 0); // subnormals
+		}
+
+		mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored. How to include it in mres >= 2^25 section??? 
+		if (mres >= 0x01000000) { // mres is greater than 2^23
+			mres >>= (eres > 0); // subnormals
+			++eres;
+		}
+
+		if (eres >= 0xFF) {
+			return res + 0x7F800000;
+		}
+		res += eres << 23;
+		if (eres > 0)
+			return res + mres - 0x00800000;
+		else
+			return res + mres;
+
+		return res;
+	}
+
 	FP32 mul2(const FP32 l, const FP32 r) const noexcept { //last bit error in subnormals
 		FP32 res; 
 		//res.data = (l.getsign() ^ r.getsign()) << 31;
@@ -202,11 +279,12 @@ public:
 		}
 		if ((l.data >> 1) == 0 || (r.data >> 1) == 0) {
 			res.data = (l.getsign() ^ r.getsign()) << 31; //bad
-			return data;
+			return res;
 		}
 
 		uint64_t mres = (l.getmantissa() + (uint64_t(l.getexp() > 0) << 23)) * (r.getmantissa() + (uint64_t(r.getexp() > 0) << 23)); //bad type (m1*m2)/2^23 = m1/2^23 * m2
 		int32_t eres = l.getexp() + r.getexp() - int32_t(127) + (l.getexp() == 0 || r.getexp() == 0); // subnormal
+
 		while ((mres < (uint64_t(1) << 46)) && (eres >= 0)) { // from subnormal to normal ZEEEEEEEE00000*****... if one arg is subnormal and m3 < 2^23
 			--eres;
 			mres <<= 1;
@@ -227,7 +305,7 @@ public:
 		}
 		else if (eres >= -23) {
 			res.data += mres/* >> -eres*/;
-			res.data >>= -(eres - 1); 
+			res.data >>= -eres + 1; 
 			//res.data = roundDiv(res.data, -eres); //? correct? NO
 		}
 		else {
@@ -238,6 +316,62 @@ public:
 			return fpinf;
 		}
 		res.data += (l.getsign() ^ r.getsign()) << 31;
+		return res;
+	}
+
+	// masks:
+	// sign: 0x80000000
+	// exp:  0x7F800000
+	// mant: 0x007FFFFF
+	
+	static uint32_t mul3(uint32_t l, uint32_t r, float& example) noexcept {
+		example = float(FP32(l)) * float(FP32(r)); //
+		uint32_t res = (l ^ r) & 0x80000000;
+		uint32_t el = l & 0x7F800000;
+		uint32_t er = r & 0x7F800000;
+		int32_t eres;
+		uint32_t ml = l & 0x007FFFFF;
+		uint32_t mr = r & 0x007FFFFF;
+		uint32_t mres;
+
+		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
+			if (ml != 0 && el == 0x7F800000) // if left is nan
+				return res | l;
+			else if (er == 0x7F800000) // if right is inf or nan
+				return res | r;
+			return res | l;
+		}
+
+		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
+		mres = ((ml + 0x00800000 * (el > 0)) >> 11) * ((mr + 0x00800000 * (er > 0)) >> 11); // calculating 1 bit extended mantissa
+
+		while ((mres < 0x01000000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+			eres -= 1; 
+			mres <<= 1;
+		}
+		while (mres >= 0x02000000) { // mres is greater than 2^23 (2^25). Can it be speeded up?
+			eres += 1;
+			mres >>= 1;
+		}
+
+		if (eres > 0) { // if normal
+			mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored
+			if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24)
+				eres += 1;
+				mres >>= 1;
+			}
+			if (eres >= 0xFF) { // if infinity
+				return res | 0x7F800000;
+			}
+			else {
+				return res + mres - 0x00800000 + (eres << 23); // calculating result
+			}
+		}
+		else if (eres >= -23) { // if subnormal
+			mres >>= (-eres + 1);
+			return res + ((mres + (mres & 0x00000001)) >> 1); // last bit stored
+		}
+
 		return res;
 	}
 
@@ -363,6 +497,28 @@ class Alltests {
 		}
 		return true;
 	}
+	void run2() {
+		int input;
+		uint64_t lc, rc;
+		uint32_t res;
+		float f;
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
+				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
+				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+				//if (f == f && res != FP32(f).data) { // 2940 3641 4341 -> 701 700
+					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
+					cout << f << " expected, " << float(FP32(res)) << " instead\n";
+					FP32(f).print();
+					cout << bitset<32>(res) << endl;
+					cout << endl << "Continue? 1 - yes, 0 - no\n";
+					cin >> input;
+					if (input) continue;
+					return;
+				}
+			}
+		}		
+	}
 };
 
 template <typename T>
@@ -461,7 +617,8 @@ int main() {
 	bool flag = true;
 	Alltests tests;
 	//if (flag) flag = tests.run_specific();
-	if (flag) flag = tests.run();
+	//if (flag) flag = tests.run();
+	tests.run2();
 	cout << endl << "ENDED" << endl;
 
 
