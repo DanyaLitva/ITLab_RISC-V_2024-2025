@@ -43,10 +43,8 @@ void PrintFP16_ed(FP16 N);
 void PrintFP16_f(FP16 N);
 //вернуть значение FP16 в виде float
 float GetFloat(FP16 N);
-//operator+ (реализован + для нормалов)
+//operator+ с разными знаками
 void AddFP16(FP16 N1, FP16 N2, FP16* Res);
-//operator+ v2 с разными знаками(черновой вариант)
-void AddFP16_2(FP16 N1, FP16 N2, FP16* Res);
 //operator* (реализовано для нормалов)
 void MulFP16(FP16 N1, FP16 N2, FP16* Res);
 
@@ -61,7 +59,7 @@ int main()
     A.in.exp = 17;
     A.in.man = 25;
     
-    f1 = -1.55f;
+    f1 = 1025.0f;
     ConvertftoFP16(f1, &A);
     
     B.in.sign = 0;
@@ -71,7 +69,7 @@ int main()
     f2=-1.61f;
     ConvertftoFP16(f2, &B);
 
-    AddFP16_2(A, B, &C);
+    AddFP16(A, B, &C);
     ConvertFP16tof(A, &f1);
     ConvertFP16tof(B, &f2);
     ConvertFP16tof(C, &f3);
@@ -93,14 +91,14 @@ int main()
     A.in.exp = 17;
     A.in.man = 25;
     
-    f1 = 150.0f;
+    f1 = 6.57f;
     ConvertftoFP16(f1, &A);
     
     B.in.sign = 0;
     B.in.exp = 16;
     B.in.man = 700;
     
-    f2=300.0f;
+    f2=13.7565555f;
     ConvertftoFP16(f2, &B);
 
     MulFP16(A, B, &C);
@@ -195,7 +193,7 @@ void PrintFP16_f(FP16 N) {
     printf("%f", temp);
 }
 
-
+/*
 void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
     int diff = abs(N1.in.exp - N2.in.exp); //разница порядков
     int MaxExp;
@@ -215,8 +213,9 @@ void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
     Res->in.exp = MaxExp;
     Res->in.man = (temp - (1<<manLength));
 }
+*/
 
-void AddFP16_2(FP16 N1, FP16 N2, FP16* Res) {
+void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
     int diff = abs(N1.in.exp - N2.in.exp); //разница порядков
     int MaxExp;
     int sign_Min,sign_Max;
@@ -230,26 +229,31 @@ void AddFP16_2(FP16 N1, FP16 N2, FP16* Res) {
         sign_Min=N1.in.sign;
         sign_Max=N2.in.sign;
     }
+
     int temp;
-    
     int shift;
     if ((manLength - diff) <= 0) shift = 0;
     else shift = (1 << (manLength - diff));
+    if (manLength == diff) shift = 1;
+
     temp = pow(-1,N1.in.sign)*(N1.in.man >> (MaxExp - N1.in.exp)) + pow(-1,N2.in.sign)*(N2.in.man >> (MaxExp - N2.in.exp)) + pow(-1,sign_Min)*shift + pow(-1,sign_Max)*(1 << manLength);
+
     if (temp<0) Res->in.sign = 1;
     else Res->in.sign = 0;
     temp=abs(temp);
-    while(temp<(1<<manLength)){
+
+    while((temp<(1<<manLength)) && (MaxExp>0)){
         temp*=2;
         MaxExp--;
     }
-    if (temp >= (1 << (manLength+1))) {
+
+    if ((temp >= (1 << (manLength+1)) && (MaxExp<(1<<(expLength))))) {
        temp = (temp / 2);
        MaxExp++;
     }
+
     Res->in.exp = MaxExp;
     Res->in.man = (temp - (1<<manLength));
-
 }
 
 
@@ -259,17 +263,17 @@ void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
     int temp = ((N1.in.man * N2.in.man)/(1<<manLength)) + N1.in.man + N2.in.man  + (1<<manLength);
 
     Res->in.exp = ((N1.in.exp-shiftExp) + (N2.in.exp-shiftExp) + shiftExp);
-    //int temp2 = (1 << manLength);
-    /*while (temp >= (1<<(manLength))) {
-        temp = (temp / 2);
-        temp2 /= 2;
-        temp -= temp2;
-        Res->exp++;
-    }*/
-    if(temp>= + (1<<(manLength+1))) {
+
+    int flag = 0;
+    if(temp>= (1<<(manLength+1))) {
+        flag = (temp & 1);
         temp/=2; //и здесь один бит теряется
         Res->in.exp++;
     }
+
+    //округление по отрезанным битам
+    if(((temp2%(1<<manLength)) >= (1<<(manLength-1))) || flag) (temp |= 1);
+
     Res->in.man = (temp);
     Res->in.sign = N1.in.sign + N2.in.sign;
 }
