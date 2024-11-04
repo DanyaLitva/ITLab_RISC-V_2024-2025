@@ -193,21 +193,28 @@ public:
 		uint32_t el = (l & 0x7F800000) >> 23;
 		uint32_t er = (r & 0x7F800000) >> 23;
 		uint32_t eres;
-		int32_t ml = (l & 0x007FFFFF + ((el > 0) << 23)) << 1; // one extra bit
-		int32_t mr = (r & 0x007FFFFF + ((er > 0) << 23)) << 1;
+		int32_t ml = ((l & 0x007FFFFF) + ((el > 0) << 23)) << 1; // one extra bit
+		int32_t mr = ((r & 0x007FFFFF) + ((er > 0) << 23)) << 1;
 		int32_t mres;
 		if (l >> 31) ml = -ml; // how to make it faster?
 		if (r >> 31) mr = -mr;
 
-		if (el == 0x7F800000 || er == 0x7F800000) { // nan and inf checking
-			if (ml != 0 && el == 0x7F800000) // if left is nan
+		if (el == 0xFF || er == 0xFF) { // nan and inf checking
+			if (el == 0xFF) {
+				if (ml != 0) 
+					return l;
+				if (er == 0xFF) {
+					if (mr != 0)
+						return r;
+					if ((l ^ r) == 0x80000000)
+						return r + 1;
+					else 
+						return r;
+				}
 				return l;
-			if (mr != 0 && er == 0x7F800000) // if right is nan
-				return r;
-			if (l == r)
-				return l;
+			}
 			else
-				return r + 1; // return nan if inf - inf
+				return r;
 		}
 
 		if (el > er) { // calulate exponent and mantissa making exponents equal each other
@@ -217,6 +224,7 @@ public:
 			else mres = ml + (mr >> (el - er));
 		}
 		else {
+			er += (er == 0);
 			el += (el == 0);
 			eres = er;
 			if (er - el >= 32) mres = mr;
@@ -505,8 +513,9 @@ class Alltests {
 		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528
 			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
 				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
-				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-				//if (f == f && res != FP32(f).data) { // 2940 3641 4341 -> 701 700
+				//res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
+				//if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+				if (f == f && res != FP32(f).data) { // 2940 3641 4341 -> 701 700
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
