@@ -196,8 +196,10 @@ public:
 		int32_t ml = ((l & 0x007FFFFF) + ((el > 0) << 23)) << 1; // one extra bit
 		int32_t mr = ((r & 0x007FFFFF) + ((er > 0) << 23)) << 1;
 		int32_t mres;
-		if (l >> 31) ml = -ml; // how to make it faster?
-		if (r >> 31) mr = -mr;
+		//if (l >> 31) ml = -ml; // how to make it faster?
+		//if (r >> 31) mr = -mr;
+		ml *= -(2 * int32_t(l >> 31) - 1);
+		mr *= -(2 * int32_t(r >> 31) - 1); 
 
 		if (el == 0xFF || er == 0xFF) { // nan and inf checking
 			if (el == 0xFF) {
@@ -332,15 +334,15 @@ public:
 	// exp:  0x7F800000
 	// mant: 0x007FFFFF
 	
-	static uint32_t mul3(uint32_t l, uint32_t r, float& example) noexcept {
+	static uint32_t mul3(uint32_t l, uint32_t r, float& example) noexcept { // CSR register, rounding to closest odd number // CRlibn // Increase bit stored!
 		example = float(FP32(l)) * float(FP32(r)); //
 		uint32_t res = (l ^ r) & 0x80000000;
 		uint32_t el = l & 0x7F800000;
 		uint32_t er = r & 0x7F800000;
 		int32_t eres;
-		uint32_t ml = l & 0x007FFFFF;
-		uint32_t mr = r & 0x007FFFFF;
-		uint32_t mres;
+		uint64_t ml = l & 0x007FFFFF;
+		uint64_t mr = r & 0x007FFFFF;
+		uint64_t mres;
 
 		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
 			if (ml != 0 && el == 0x7F800000) // if left is nan
@@ -351,20 +353,22 @@ public:
 		}
 
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
-		mres = ((ml + 0x00800000 * (el > 0)) >> 11) * ((mr + 0x00800000 * (er > 0)) >> 11); // calculating 1 bit extended mantissa
+		//mres = ((ml + 0x00800000 * (el > 0)) >> 11) * ((mr + 0x00800000 * (er > 0)) >> 11); // calculating 1 bit extended mantissa
+		mres = (ml + ((el > 0) << 23)) * (mr + ((er > 0) << 23));
 
-		while ((mres < 0x01000000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+		while ((mres < 0x400000000000000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
 			eres -= 1; 
 			mres <<= 1;
 		}
-		while (mres >= 0x02000000) { // mres is greater than 2^23 (2^25). Can it be speeded up?
+		while (mres >= 0x800000000000000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
 			eres += 1;
 			mres >>= 1;
 		}
 
 		if (eres > 0) { // if normal
-			mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored
-			if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24)
+			mres = (mres >> 23) + ((mres & 0x7FFFFF) >= 0x400000); // last bit stored // rounding
+			// even rounding
+			if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
 				eres += 1;
 				mres >>= 1;
 			}
@@ -377,7 +381,9 @@ public:
 		}
 		else if (eres >= -23) { // if subnormal
 			mres >>= (-eres + 1);
-			return res + ((mres + (mres & 0x00000001)) >> 1); // last bit stored
+			//return res + ((mres + (((mres >> 1) & mres) & 0x00000001)) >> 1);
+			//return res + (mres >> 1) + (((mres >> 1) & mres) & 0x00000001);
+			return res + (mres >> 23) + ((mres & 0x7FFFFF) >= 0x400000); // last bit stored // rounding
 		}
 
 		return res;
@@ -487,8 +493,8 @@ class Alltests {
 				//if (lc < 0x00800000 || rc < 0x00800000) continue;
 				l = uint32_t(lc);
 				r = uint32_t(rc);
-				l = l.add2(l, r);
-				//l = l.mul2(l, r);
+				//l = l.add2(l, r);
+				l = l.mul2(l, r);
 				//cout << endl << float(BF16(l)) << " " << float(BF16(r)) << endl;
 				//cout << l.example << " " << float(l) << endl;
 				if (/*!isnan(l.example)*/ (l.example == l.example) && !equal_prec(FP32(l.example).data, l.data, 1)) {
@@ -512,8 +518,8 @@ class Alltests {
 		float f;
 		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528
 			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
-				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
-				//res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
+				//res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				//if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
 				if (f == f && res != FP32(f).data) { // 2940 3641 4341 -> 701 700
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
@@ -522,6 +528,7 @@ class Alltests {
 					cout << bitset<32>(res) << endl;
 					cout << endl << "Continue? 1 - yes, 0 - no\n";
 					cin >> input;
+					//input = 1;
 					if (input) continue;
 					return;
 				}
