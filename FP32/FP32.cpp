@@ -196,8 +196,6 @@ public:
 		int64_t ml = ((uint64_t(l) & 0x007FFFFF) + ((uint64_t(el > 0)) << 23)) << 24; // 24 extra bit
 		int64_t mr = ((uint64_t(r) & 0x007FFFFF) + ((uint64_t(er > 0)) << 23)) << 24;
 		int64_t mres;
-		//if (l >> 31) ml = -ml; // how to make it faster?
-		//if (r >> 31) mr = -mr;
 		ml *= -(2 * int32_t(l >> 31) - 1);
 		mr *= -(2 * int32_t(r >> 31) - 1); 
 
@@ -222,36 +220,35 @@ public:
 		if (el > er) { // calulate exponent and mantissa making exponents equal each other
 			er += (er == 0);
 			eres = el;
-			if (el - er >= 25) mres = ml;
+			if (el - er >= 64) mres = ml; // 25
 			else mres = ml + (mr >> (el - er));
 		}
 		else {
 			er += (er == 0);
 			el += (el == 0);
 			eres = er;
-			if (er - el >= 25) mres = mr;
+			if (er - el >= 64) mres = mr;
 			else mres = mr + (ml >> (er - el));
 		}
 
 		res = 0x80000000 * (mres < 0);
 		mres *= -(2 * (mres < 0) - 1);
 
-//		mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored.
-		if (mres >= /* 0x0200'0000 */ 1'0000'0000'0000) { // if mres is greater than a 2^23 (2^48) // make a non-if code
+//		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
+		if (mres >= 0x1'0000'0000'0000 /*0x100'0000*/) { // if mres is greater than a 2^23 (2^48) // make a non-if code
 			mres >>= (eres > 0); // subnormals
 			++eres;
 		}
 		else {
-			while (mres < /* 0x0100'0000 */ 8000'0000'0000 && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+			while (mres < 0x8000'0000'0000 /*0x80'0000*/ && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0
 				--eres;
 				mres <<= (eres > 0); // subnormals
 			}
 		}
 
-//		mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored. How to include it in mres >= 2^25 section???
 		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
-		if (mres >= 0x01000000) { // mres is greater than 2^23
-      		mres >>= (eres > 0); // subnormals
+		if (mres >= 0x01000000) { // mres is greater than 2^23 // add this into >= 2^48
+			mres >>= (eres > 0); // subnormals
 			++eres;
 		}
 
@@ -353,7 +350,6 @@ public:
 
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
 		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa
-		//mres = (ml + ((el > 0) << 23)) * (mr + ((er > 0) << 23));
 
 		while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
 			eres -= 1; 
@@ -366,7 +362,6 @@ public:
 
 		if (eres > 0) { // if normal
 			mres = (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored 
-//			mres = (mres >> 24) + ((mres & 0xFF'FFFF) >= 0x80'0000);
 			if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
 				eres += 1;
 				mres >>= 1;
@@ -380,9 +375,6 @@ public:
 		}
 		else if (eres >= -23) { // if subnormal
 			mres >>= (-eres + 1);
-//			return res + ((mres + (((mres >> 1) & mres) & 0x00000001)) >> 1);
-//			return res + (mres >> 1) + (((mres >> 1) & mres) & 0x00000001);
-//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000); 
 			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
 		}
 
@@ -516,12 +508,12 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 6528) { // 6528 69632
 			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
-				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
-//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
-				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-//				if (f == f && res != FP32(f).data) { // 2940 3641 4341 -> 701 700
+//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
+//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+				if (f == f && res != FP32(f).data) {
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
