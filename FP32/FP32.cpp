@@ -193,9 +193,9 @@ public:
 		uint32_t el = (l & 0x7F800000) >> 23;
 		uint32_t er = (r & 0x7F800000) >> 23;
 		uint32_t eres;
-		int32_t ml = ((l & 0x007FFFFF) + ((el > 0) << 23)) << 1; // one extra bit
-		int32_t mr = ((r & 0x007FFFFF) + ((er > 0) << 23)) << 1;
-		int32_t mres;
+		int64_t ml = ((uint64_t(l) & 0x007FFFFF) + ((uint64_t(el > 0)) << 23)) << 24; // 24 extra bit
+		int64_t mr = ((uint64_t(r) & 0x007FFFFF) + ((uint64_t(er > 0)) << 23)) << 24;
+		int64_t mres;
 		//if (l >> 31) ml = -ml; // how to make it faster?
 		//if (r >> 31) mr = -mr;
 		ml *= -(2 * int32_t(l >> 31) - 1);
@@ -222,44 +222,43 @@ public:
 		if (el > er) { // calulate exponent and mantissa making exponents equal each other
 			er += (er == 0);
 			eres = el;
-			if (el - er >= 32) mres = ml;
+			if (el - er >= 25) mres = ml;
 			else mres = ml + (mr >> (el - er));
 		}
 		else {
 			er += (er == 0);
 			el += (el == 0);
 			eres = er;
-			if (er - el >= 32) mres = mr;
+			if (er - el >= 25) mres = mr;
 			else mres = mr + (ml >> (er - el));
 		}
 
-		if (mres < 0) { // calculate mantissa and a sign
-			res = 0x80000000;
-			mres = -mres;
+		res = 0x80000000 * (mres < 0);
+		mres *= -(2 * (mres < 0) - 1);
+
+//		mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored.
+		if (mres >= /* 0x0200'0000 */ 1'0000'0000'0000) { // if mres is greater than a 2^23 (2^48) // make a non-if code
+			mres >>= (eres > 0); // subnormals
+			++eres;
 		}
 		else {
-			res = 0;
+			while (mres < /* 0x0100'0000 */ 8000'0000'0000 && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+				--eres;
+				mres <<= (eres > 0); // subnormals
+			}
 		}
 
-		if (mres >= 0x02000000) { // if mres is greater than a 2^23 (2^24)
-			mres >>= (eres > 0); // subnormals
-			++eres;
-		}
-		while (mres < 0x01000000 && eres > 0) { // if mres is less than a 2^23 (2^24)
-			--eres;
-			mres <<= (eres > 0); // subnormals
-		}
-
-		mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored. How to include it in mres >= 2^25 section??? 
+//		mres = (mres + (mres & 0x00000001)) >> 1; // last bit stored. How to include it in mres >= 2^25 section???
+		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
 		if (mres >= 0x01000000) { // mres is greater than 2^23
-			mres >>= (eres > 0); // subnormals
+      		mres >>= (eres > 0); // subnormals
 			++eres;
 		}
 
-		if (eres >= 0xFF) {
+		if (eres >= 0xFF) { // in inf
 			return res + 0x7F800000;
 		}
-		res += eres << 23;
+		res += eres << 23; // calcuating result
 		if (eres > 0)
 			return res + mres - 0x00800000;
 		else
@@ -353,21 +352,21 @@ public:
 		}
 
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
-		//mres = ((ml + 0x00800000 * (el > 0)) >> 11) * ((mr + 0x00800000 * (er > 0)) >> 11); // calculating 1 bit extended mantissa
-		mres = (ml + ((el > 0) << 23)) * (mr + ((er > 0) << 23));
+		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa
+		//mres = (ml + ((el > 0) << 23)) * (mr + ((er > 0) << 23));
 
-		while ((mres < 0x400000000000000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+		while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
 			eres -= 1; 
 			mres <<= 1;
 		}
-		while (mres >= 0x800000000000000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
+		while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
 			eres += 1;
 			mres >>= 1;
 		}
 
 		if (eres > 0) { // if normal
-			mres = (mres >> 23) + ((mres & 0x7FFFFF) >= 0x400000); // last bit stored // rounding
-			// even rounding
+			mres = (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored 
+//			mres = (mres >> 24) + ((mres & 0xFF'FFFF) >= 0x80'0000);
 			if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
 				eres += 1;
 				mres >>= 1;
@@ -376,14 +375,15 @@ public:
 				return res | 0x7F800000;
 			}
 			else {
-				return res + mres - 0x00800000 + (eres << 23); // calculating result
+				return res + uint32_t(mres) - 0x00800000 + (eres << 23); // calculating result
 			}
 		}
 		else if (eres >= -23) { // if subnormal
 			mres >>= (-eres + 1);
-			//return res + ((mres + (((mres >> 1) & mres) & 0x00000001)) >> 1);
-			//return res + (mres >> 1) + (((mres >> 1) & mres) & 0x00000001);
-			return res + (mres >> 23) + ((mres & 0x7FFFFF) >= 0x400000); // last bit stored // rounding
+//			return res + ((mres + (((mres >> 1) & mres) & 0x00000001)) >> 1);
+//			return res + (mres >> 1) + (((mres >> 1) & mres) & 0x00000001);
+//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000); 
+			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
 		}
 
 		return res;
@@ -518,10 +518,10 @@ class Alltests {
 		float f;
 		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528
 			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
-				//res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
-				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
-				//if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-				if (f == f && res != FP32(f).data) { // 2940 3641 4341 -> 701 700
+				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
+//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
+				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+//				if (f == f && res != FP32(f).data) { // 2940 3641 4341 -> 701 700
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
