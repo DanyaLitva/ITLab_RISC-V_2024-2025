@@ -89,18 +89,18 @@ int main()
 
     printf("\n");
     A.in.sign = 0;
-    A.in.exp = 17;
-    A.in.man = 25;
+    A.in.exp = 12;
+    A.in.man = 512;
     
-    f1 = 0;
-    ConvertftoFP16(f1, &A);
+    //f1 = 0;
+    //ConvertftoFP16(f1, &A);
     
     B.in.sign = 0;
-    B.in.exp = 16;
-    B.in.man = 700;
+    B.in.exp = 3;
+    B.in.man = 177;
     
-    f2=13.7565555f;
-    ConvertftoFP16(f2, &B);
+    //f2=13.7565555f;
+    //ConvertftoFP16(f2, &B);
 
     MulFP16(A, B, &C);
     ConvertFP16tof(A, &f1);
@@ -271,7 +271,7 @@ void AddFP16_N_S(FP16 N1, FP16 N2, FP16* Res) {
     }
     //A - субнормальное В - нормальное
     Res->in.sign = B.in.sign;
-    int diff = (B.in.exp-shiftExp) + 14;
+    int diff = (B.in.exp-shiftExp) + (shiftExp - 1);
     int temp;
     if (diff != 0) temp = pow(-1, B.in.sign) * ((1 << manLength) + B.in.man) + (pow(-1, A.in.sign) * (A.in.man >> diff));
     else temp = pow(-1,B.in.sign)*((1 << manLength) + B.in.man) + (pow(-1,A.in.sign) * A.in.man);
@@ -371,6 +371,73 @@ void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
 
 
 
+void MulFP16_N_S(FP16 N1, FP16 N2, FP16* Res) {
+    FP16 A, B;
+    int shiftExp = (1 << (expLength - 1)) - 1; //смещение   -15 ... 16
+    if (IsSubnormal(N1)) {
+        AssignFP16(&A, N1);
+        AssignFP16(&B, N2);
+    }
+    else {
+        AssignFP16(&A, N2);
+        AssignFP16(&B, N1);
+    }
+    //A - субнормальное В - нормальное
+    int flag = 0;
+    int temp2 = A.in.man * B.in.man; //сохранять, тут последниий бит разложить на / и %
+    int temp = ((A.in.man * B.in.man) / (1 << manLength)) + A.in.man;
+    int temp_exp = B.in.exp - shiftExp + 1;
+    while (temp_exp <= 0) {
+        temp_exp++;
+        temp /= 2;
+    }
+    Res->in.exp = temp_exp;
+
+    if (Res->in.exp == 0) {
+        if (temp >= (1 << manLength)) {
+            temp -= (1 << manLength);
+            Res->in.exp++;
+        }
+        Res->in.man = temp;
+    }
+    else {
+        if (Res->in.exp == 1) {
+            if (temp < (1 << manLength)) {
+                temp += (1 << manLength);
+                Res->in.exp--;
+            }
+            if (temp >= (1 << (manLength + 1))) {
+                flag = temp & 1;
+                temp = (temp / 2);
+                Res->in.exp++;
+            }
+        }
+        else {
+            if (temp < (1 << manLength)) {
+                temp *= 2;
+                Res->in.exp--;
+            }
+
+            if (temp >= (1 << (manLength + 1))) {
+                flag = temp & 1;
+                temp = (temp / 2);
+                Res->in.exp++;
+            }
+        }
+        Res->in.man = temp - (1 << (manLength));
+    }
+    
+    //округление по отрезанным битам
+    if (((temp2 % (1 << manLength)) >= (1 << (manLength - 1))) || flag) (Res->in.man += 1);
+    Res->in.sign = N1.in.sign ^ N2.in.sign;
+    if (IsNull(N1) || IsNull(N2)) Res->in.man = (Res->in.exp = 0);
+}
+
+void MulFP16_S_S(FP16 N1, FP16 N2, FP16* Res) {
+    Res->in.sign = N1.in.sign ^ N2.in.sign;
+    Res->in.man = Res->in.exp = 0;
+}
+
 
 
 
@@ -378,23 +445,39 @@ void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
 
 
 void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
-    int shiftExp = (1 << (expLength - 1)) - 1; //смещение   -15 ... 16
-    int temp2 = (N1.in.man * N2.in.man); //сохранять, тут последниий бит разложить на / и %
-    int temp = ((N1.in.man * N2.in.man) / (1 << manLength)) + N1.in.man + N2.in.man + (1 << manLength);
+    if ((IsSubnormal(N1) + IsSubnormal(N2)) == 0) {
+        int shiftExp = (1 << (expLength - 1)) - 1; //смещение   -15 ... 16
+        int temp2 = (N1.in.man * N2.in.man); //сохранять, тут последниий бит разложить на / и %
+        int temp = ((N1.in.man * N2.in.man) / (1 << manLength)) + N1.in.man + N2.in.man + (1 << manLength);
 
-    Res->in.exp = ((N1.in.exp - shiftExp) + (N2.in.exp - shiftExp) + shiftExp);
+         int temp_exp = ((N1.in.exp - shiftExp) + (N2.in.exp - shiftExp) + shiftExp);
+        if (temp_exp <=0){
+            temp = temp >> (-1*temp_exp + 1);
+            temp_exp=0;
+            //сабнормал
+            if (temp>=(1<<manLength)){
+                temp-=(1<<manLength);
+                temp_exp++;
+            }
+        }
+         Res->in.exp = temp_exp;
 
-    int flag = 0;
-    if (temp >= (1 << (manLength + 1))) {
-        flag = (temp & 1);
-        temp /= 2; //и здесь один бит теряется
-        Res->in.exp++;
+        int flag = 0;
+        if (temp >= (1 << (manLength + 1))) {
+            flag = (temp & 1);
+            temp /= 2; //и здесь один бит теряется
+            Res->in.exp++;
+        }
+
+        //округление по отрезанным битам
+        if (((temp2 % (1 << manLength)) >= (1 << (manLength - 1))) || flag) (temp += 1);
+
+        Res->in.man = (temp);
+        Res->in.sign = N1.in.sign + N2.in.sign;
+        if (IsNull(N1) || IsNull(N2)) Res->in.man = (Res->in.exp = 0);
     }
-
-    //округление по отрезанным битам
-    if (((temp2 % (1 << manLength)) >= (1 << (manLength - 1))) || flag) (temp += 1);
-
-    Res->in.man = (temp);
-    Res->in.sign = N1.in.sign + N2.in.sign;
-    if (IsNull(N1) || IsNull(N2)) Res->in.man = (Res->in.exp = 0);
+    else {
+        if ((IsSubnormal(N1) + IsSubnormal(N2)) == 1) MulFP16_N_S(N1, N2, Res);
+        else MulFP16_S_S(N1, N2, Res);
+    }
 }
