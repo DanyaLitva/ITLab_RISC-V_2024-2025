@@ -94,16 +94,17 @@ int main()
     A.in.exp =13;
     A.in.man = 164;
     
-    f1 = 0.555;
+    f1 = 0.55555;
     ConvertftoFP16(f1, &A);
     
     B.in.sign = 0;
     B.in.exp = 0;
-    B.in.man = 127;
+    B.in.man = 511;
     
-    f2=2.05;
+    f2 = 0.000030517578125;
+    //f2 = 0.000030457973480;
     ConvertftoFP16(f2, &B);
-
+    
     MulFP16(A, B, &C);
     ConvertFP16tof(A, &f1);
     ConvertFP16tof(B, &f2);
@@ -236,10 +237,17 @@ void ConvertftoFP16(float f, FP16* N){
     }
     expf -= ((1<<(8-1)) - 1); //смещение float
     if (expf > 16) expf=16;
-    if (expf < -14){
+    
+    if (expf==-15){
+        manf=manf>>1;
+        manf+=(1<<(manLength-1));
+    }
+    
+    if (expf < -15){
         manf = (manf>>(-shiftExp - expf));
         expf = -15;
     }
+    
     N->in.man = manf;
     N->in.exp = (expf + shiftExp);
 }
