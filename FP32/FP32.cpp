@@ -142,7 +142,7 @@ public:
 			eres = el;
 			mres = ml + mr;
 		}
-		
+
 
 		if (mres < 0) {
 			res.data = int32_t(1) << 31;
@@ -162,13 +162,13 @@ public:
 			++eres;
 			//mres = roundDiv(mres, 1); //works correct with simple div
 		}
-			
+
 		while (mres < (int32_t(1) << 23) && eres > 0) { // mb error is here or it is not
 			--eres;
 			if (eres > 0) //subnormals
 				mres <<= 1;
 		}
-		
+
 		if (eres >= 0xFF) {
 			res.data += 0xFF << 23;
 			return res;
@@ -197,18 +197,18 @@ public:
 		int64_t mr = ((uint64_t(r) & 0x007FFFFF) + ((uint64_t(er > 0)) << 23)) << 24;
 		int64_t mres;
 		ml *= -(2 * int32_t(l >> 31) - 1);
-		mr *= -(2 * int32_t(r >> 31) - 1); 
+		mr *= -(2 * int32_t(r >> 31) - 1);
 
 		if (el == 0xFF || er == 0xFF) { // nan and inf checking
 			if (el == 0xFF) {
-				if (ml != 0) 
+				if (ml != 0)
 					return l;
 				if (er == 0xFF) {
 					if (mr != 0)
 						return r;
 					if ((l ^ r) == 0x80000000)
 						return r + 1;
-					else 
+					else
 						return r;
 				}
 				return l;
@@ -234,7 +234,7 @@ public:
 		res = 0x80000000 * (mres < 0);
 		mres *= -(2 * (mres < 0) - 1);
 
-//		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
+		//		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
 		if (mres >= 0x1'0000'0000'0000 /*0x100'0000*/) { // if mres is greater than a 2^23 (2^48) // make a non-if code
 			mres >>= (eres > 0); // subnormals
 			++eres;
@@ -264,8 +264,14 @@ public:
 		return res;
 	}
 
+	static uint32_t sub(uint32_t l, uint32_t r) noexcept { // check me!
+		float dummy; //
+		r = (r & 0x7FFF'FFFF) + (~r >> 31);
+		return FP32::add3(l, r, dummy);
+	}
+
 	FP32 mul2(const FP32 l, const FP32 r) const noexcept { //last bit error in subnormals
-		FP32 res; 
+		FP32 res;
 		//res.data = (l.getsign() ^ r.getsign()) << 31;
 		res.data = 0;
 		res.example = l.example * r.example;
@@ -296,9 +302,9 @@ public:
 			mres <<= 1;
 		}
 		mres = roundDiv64(mres, 23);
-		
+
 		while (mres >= (uint64_t(1) << 24)) { //instruction to count 00001***mant zeros can be used. mb only 1 shift?
-		// just an if
+			// just an if
 			++eres;
 			mres >>= 1;
 			//mres = roundDiv64(mres, 1); //works correct with simple div // it will break my while
@@ -311,7 +317,7 @@ public:
 		}
 		else if (eres >= -23) {
 			res.data += mres/* >> -eres*/;
-			res.data >>= -eres + 1; 
+			res.data >>= -eres + 1;
 			//res.data = roundDiv(res.data, -eres); //? correct? NO
 		}
 		else {
@@ -329,7 +335,7 @@ public:
 	// sign: 0x80000000
 	// exp:  0x7F800000
 	// mant: 0x007FFFFF
-	
+
 	static uint32_t mul3(uint32_t l, uint32_t r, float& example) noexcept { // CSR register, rounding to closest odd number // CRlibn // Increase bit stored!
 		example = float(FP32(l)) * float(FP32(r)); //
 		uint32_t res = (l ^ r) & 0x80000000;
@@ -349,10 +355,10 @@ public:
 		}
 
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
-		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa
+		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
 
 		while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
-			eres -= 1; 
+			eres -= 1;
 			mres <<= 1;
 		}
 		while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
@@ -376,6 +382,80 @@ public:
 		else if (eres >= -23) { // if subnormal
 			mres >>= (-eres + 1);
 			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
+		}
+
+		return res;
+	}
+
+	static uint32_t div(uint32_t l, uint32_t r, float& example) noexcept {
+		float dummy; //
+		example = float(FP32(l)) / float(FP32(r)); //
+		uint32_t res = (l ^ r) & 0x80000000;
+		uint32_t el = l & 0x7F800000;
+		uint32_t er = r & 0x7F800000;
+		int32_t eres = el - er + 127;
+		int32_t shift = er - 126;
+		uint64_t ml = l & 0x007FFFFF;
+		uint64_t mr = r & 0x007FFFFF;
+		uint64_t mres;
+
+		if ((el == 0x7F800000) || (er == 0x7F800000) || (r == 0) || (r == 0x80000000)) { // nan and inf
+			if (el == 0x7F800000) { // left is inf or nan
+				if (ml != 0) // left is nan
+					return res | l;
+				else if (er == 0x7F800000) // right is inf or nan
+					return res | 0x7F800001; // inf / inf = nan
+				else
+					return res | l; // inf / finite = inf
+			}
+			if (er == 0x7F800000) { // right is inf or nan
+				if (mr != 0) // is nan
+					return res | r;
+				else // is inf
+					return res; // zero
+			}
+
+			if ((r == 0) || (r == 0x80000000)) { // right is zero
+				if ((l == 0) || (l == 0x80000000)) // left is zero
+					return res | 0x7F800001;
+				else
+					return res | 0x7F800000;
+			}
+		}
+
+		// calculations
+		if (eres > (254 + 22)) {
+			return res | 0x7F800000;
+		}
+		else if (eres < -23) {
+			return res;
+		}
+		else {
+			r = mr + (126 << 23);
+			uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy);
+			x = FP32::add3(x, FP32::mul3(x, FP32::sub(0x3f800000, FP32::mul3(r, x, dummy)), dummy), dummy); // x = x + x * (1 - r*x)
+			x = FP32::add3(x, FP32::mul3(x, FP32::sub(0x3f800000, FP32::mul3(r, x, dummy)), dummy), dummy); // x = x + x * (1 - r*x)
+			x = FP32::add3(x, FP32::mul3(x, FP32::sub(0x3f800000, FP32::mul3(r, x, dummy)), dummy), dummy); // x = x + x * (1 - r*x)
+			x = (FP32::mul3((126 << 23) + ml, x, dummy) & 0x007FFFFF);// + 0x80'0000; // l * r mantissa
+			
+			//while (eres > 254) {
+			//	--eres;
+			//	
+			//}
+
+			res |= x + eres;
+
+			//er = r & 0x7F800000;
+			//if (er > shift) {
+			//	er -= shift;
+			//}
+			//else {
+			//	el -= (shift - er + 1);
+			//	er -= 1;
+			//}
+			//l = el + ml;
+			//r = er + mr;
+			//res = res | FP32::mul3(l, r, dummy);
 		}
 
 		return res;
@@ -508,12 +588,13 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 6528) { // 6528 69632
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528 69632
 			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
 //				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
-				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
-//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-				if (f == f && res != FP32(f).data) {
+//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::div(uint32_t(lc), uint32_t(rc), f);
+				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+//				if (f == f && res != FP32(f).data) {
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
