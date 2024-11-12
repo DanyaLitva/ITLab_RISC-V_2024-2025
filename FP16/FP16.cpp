@@ -52,13 +52,15 @@ void MulFP16_S_S(FP16 N1, FP16 N2, FP16* Res);
 
 void Test();
 
+//void GetX0(FP16 D);
+
 int main()
 {
     FP16 A,B,C,D;
     float f1=0, f2=0, f3=0;
     
     A.in.sign = 0;
-    A.in.exp = 1;
+    A.in.exp = 2;
     A.in.man = 512;
     
     //f1 = 0.000003;
@@ -66,7 +68,7 @@ int main()
     
     B.in.sign = 0;
     B.in.exp = 0;
-    B.in.man = 5;
+    B.in.man = 180;
     
     //f2= 0.000005;
     //ConvertftoFP16(f2, &B);
@@ -89,34 +91,41 @@ int main()
 
     printf("\n");
     A.in.sign = 0;
-    A.in.exp = 12;
-    A.in.man = 512;
+    A.in.exp =13;
+    A.in.man = 164;
     
-    //f1 = 0;
-    //ConvertftoFP16(f1, &A);
+    f1 = 0.555;
+    ConvertftoFP16(f1, &A);
     
     B.in.sign = 0;
-    B.in.exp = 3;
-    B.in.man = 177;
+    B.in.exp = 0;
+    B.in.man = 127;
     
-    //f2=13.7565555f;
-    //ConvertftoFP16(f2, &B);
+    f2=2.05;
+    ConvertftoFP16(f2, &B);
 
     MulFP16(A, B, &C);
     ConvertFP16tof(A, &f1);
     ConvertFP16tof(B, &f2);
     ConvertFP16tof(C, &f3);
-    printf("A = %f\n", f1);
+    printf("A = %.15f\n", f1);
     PrintFP16_ed(A);
-    printf("\nB = %f\n", f2);
+    printf("\nB = %.15f\n", f2);
     PrintFP16_ed(B);
-    printf("\nC = A * B = %f\n", f3); 
+    printf("\nC = A * B = %.15f\n", f3);
     PrintFP16_ed(C);
-    printf("\nthe result when using floats: %f", (f1 * f2));
-    printf("\nerror rate: %f", (f3 - (f1 * f2)));
+    printf("\nthe result when using floats: %.15f", (f1 * f2));
+    printf("\nerror rate: %.15f", (f3 - (f1 * f2)));
     ConvertftoFP16(f1*f2, &D);
     printf("\n");
 
+    /*
+    FP16 temp;
+    temp.in.sign=0;
+    temp.in.exp=15;
+    temp.in.man=20;
+    GetX0(temp);
+     */
 }
 
 
@@ -207,36 +216,34 @@ char bytes[sizeof(float)];
 char bites[sizeof(float) * 8];
 //float: 1:8:23
 void ConvertftoFP16(float f, FP16* N){
+    int shiftExp = (1<<(expLength-1)) - 1;
     for (int i = 0; i < sizeof(float) / sizeof(char); i++)
     {
-        bytes[i] = *((char*)(&f) + i * sizeof(char));     
+        bytes[i] = *((char*)(&f) + i * sizeof(char));
     }
     for (int i = 0; i < (sizeof(float)*8); ++i) {
         bites[31-i] = (bytes[i / 8] >> (i % 8)) & 1;
     }
-    
     N->in.sign = bites[0];
-    N->in.man = 0;
-    int temp = 0;
-    N->in.exp = bites[1] * (1 << (expLength - 1));
-    if (bites[1]) {
-        for (int i = 0; i < 4; ++i) {
-            N->in.exp = N->in.exp + (bites[5 + i] * (1 << (expLength - 2 - i)));
-        }
-    }
-    else {
-        for (int i = 0; i < 7; ++i) {
-            temp+=(bites[2 + i])*(1<<(6 - i));
-        }
-        temp-=112;
-        if (temp < 0) N->in.exp = 0;
-        else N->in.exp = temp;
-    }
+    int manf = 0;
     for (int i = 0; i < 10; ++i) {
-        N->in.man = N->in.man + (bites[9 + i] * (1 << (manLength - 1 - i)));
+        manf += (bites[9 + i] * (1 << (manLength - 1 - i)));
     }
-    //PrintFP16_ed(*N);
+    
+    int expf=0;
+    for (int i = 0; i < 8; ++i) {
+        expf+=(bites[1 + i])*(1<<(7 - i));
+    }
+    expf -= ((1<<(8-1)) - 1); //смещение float
+    if (expf > 16) expf=16;
+    if (expf < -14){
+        manf = (manf>>(-shiftExp - expf));
+        expf = -15;
+    }
+    N->in.man = manf;
+    N->in.exp = (expf + shiftExp);
 }
+
 
 
 float GetFloat(FP16 N){
@@ -337,7 +344,7 @@ void AddFP16(FP16 N1, FP16 N2, FP16* Res) {
             }
 
             if ((temp >= (1 << (manLength + 1)) && (MaxExp < (1 << (expLength))))) {
-                flag = temp & 1;
+                flag += temp & 1;
                 temp = (temp / 2);
                 MaxExp++;
             }
@@ -387,6 +394,7 @@ void MulFP16_N_S(FP16 N1, FP16 N2, FP16* Res) {
     int temp2 = A.in.man * B.in.man; //сохранять, тут последниий бит разложить на / и %
     int temp = ((A.in.man * B.in.man) / (1 << manLength)) + A.in.man;
     int temp_exp = B.in.exp - shiftExp + 1;
+    if (temp_exp<= 0 )flag += temp & 1;
     while (temp_exp <= 0) {
         temp_exp++;
         temp /= 2;
@@ -407,7 +415,7 @@ void MulFP16_N_S(FP16 N1, FP16 N2, FP16* Res) {
                 Res->in.exp--;
             }
             if (temp >= (1 << (manLength + 1))) {
-                flag = temp & 1;
+                flag += temp & 1;
                 temp = (temp / 2);
                 Res->in.exp++;
             }
@@ -419,7 +427,7 @@ void MulFP16_N_S(FP16 N1, FP16 N2, FP16* Res) {
             }
 
             if (temp >= (1 << (manLength + 1))) {
-                flag = temp & 1;
+                flag += temp & 1;
                 temp = (temp / 2);
                 Res->in.exp++;
             }
@@ -433,15 +441,11 @@ void MulFP16_N_S(FP16 N1, FP16 N2, FP16* Res) {
     if (IsNull(N1) || IsNull(N2)) Res->in.man = (Res->in.exp = 0);
 }
 
+
 void MulFP16_S_S(FP16 N1, FP16 N2, FP16* Res) {
     Res->in.sign = N1.in.sign ^ N2.in.sign;
     Res->in.man = Res->in.exp = 0;
 }
-
-
-
-
-
 
 
 void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
@@ -454,7 +458,8 @@ void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
         if (temp_exp <=0){
             temp = temp >> (-1*temp_exp + 1);
             temp_exp=0;
-            //сабнормал
+            //получается сабнормал
+            //переход к нормалу
             if (temp>=(1<<manLength)){
                 temp-=(1<<manLength);
                 temp_exp++;
@@ -464,7 +469,7 @@ void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
 
         int flag = 0;
         if (temp >= (1 << (manLength + 1))) {
-            flag = (temp & 1);
+            flag += (temp & 1);
             temp /= 2; //и здесь один бит теряется
             Res->in.exp++;
         }
@@ -481,3 +486,29 @@ void MulFP16(FP16 N1, FP16 N2, FP16* Res) {
         else MulFP16_S_S(N1, N2, Res);
     }
 }
+
+/*
+void GetX0(FP16 D){
+    FP16 x0;
+    x0.in.sign=0;
+    x0.in.exp=20;
+    x0.in.man=512;
+    FP16 A;
+    FP16 t_48;
+    FP16 t_1_17;
+    FP16 t_32;
+    FP16 temp;
+    ConvertftoFP16(48, &t_48);
+    ConvertftoFP16((1/17), &t_1_17);
+    ConvertftoFP16(32, &t_32);
+    MulFP16(t_48, t_1_17, &temp);
+    AddFP16(x0, temp, &x0);
+    MulFP16(t_32, t_1_17, &temp);
+    MulFP16(temp, D, &temp);
+    AddFP16(x0, temp, &x0);
+    PrintFP16_ed(x0);
+    printf("\n");
+    PrintFP16_f(x0);
+    printf("\n");
+}
+*/
