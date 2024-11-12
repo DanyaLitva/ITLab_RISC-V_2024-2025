@@ -347,10 +347,10 @@ public:
 
 		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
 			if (ml != 0 && el == 0x7F800000) // if left is nan
-				return res | l;
+				return (res & 0x80000000) + (l & 0x7FFFFFFF);
 			else if (er == 0x7F800000) // if right is inf or nan
-				return res | r;
-			return res | l;
+				return (res & 0x80000000) + (r & 0x7FFFFFFF);
+			return (res & 0x80000000) + (l & 0x7FFFFFFF);
 		}
 
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
@@ -602,10 +602,10 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 0;
+		size_t from = 4;
 
-		vector<uint32_t> vl = {0x1980, 0x1980, 0x1980};
-		vector<uint32_t> vr = {0x3383c000, 0x38a0c000, 0x3b800000};
+		vector<uint32_t> vl = {0x1980, 0x1980, 0x1980, 0x80000000};
+		vector<uint32_t> vr = {0x3383c000, 0x38a0c000, 0x3b800000, 0x80000000};
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::mul3(uint32_t(vl[i]), uint32_t(vr[i]), f);
@@ -624,10 +624,10 @@ class Alltests {
 		}
 
 		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 6528) { // 6528 69632
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
-//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 8192) { // 69632 8192
+				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
-				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
+//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::div(uint32_t(lc), uint32_t(rc), f);
 //				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
 				if (f == f && res != FP32(f).data) {
