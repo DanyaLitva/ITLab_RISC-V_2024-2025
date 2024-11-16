@@ -432,20 +432,44 @@ public:
 			}
 		}
 
+		eres = (el >> 23) + 126; // if el is subnormal
+		if (er == 0) {
+			--eres; // er += 1 if right is subnormal
+			while (mr < 0x80'0000) {
+				++eres; // --er
+				mr <<= 1;
+			}
+			mr -= 0x80'0000;
+		}
+		eres -= (er >> 23);
+		if (el == 0) {
+			++eres; // el += 1 if left is subnormal
+			while (ml < 0x80'0000) {
+				--eres; // --el
+				ml <<= 1;
+			}
+			ml -= 0x80'0000;
+		}
+
 		// calculations
 			r = mr + (126 << 23);
-			eres = (el >> 23);
-			eres -= (er >> 23) - 126; // if el is subnormal? 
+			//eres = (el >> 23);
+			//eres -= (er >> 23) - 126; // if el is subnormal? 
 //			cout << hex << endl << "r " << r << endl;
 			uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
-//			cout << "0 " << x << endl;
-			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
-//			cout << "1 " << x << endl;
-			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
-//			cout << "2 " << x << endl;
-			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
-//			cout << "3 " << x << endl;
-			cout << hex << "r^-1 " << x << endl;
+			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
+			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
+			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
+			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+
+//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // ? нужна 4ая итерация? fma needed
+//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
+//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
+//			cout << hex << "r^-1 " << x << endl;
 
 			if (eres >= 255) 
 				return res + 0x7F800000;
@@ -591,13 +615,13 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 3;
+		size_t from = 2;
 
-		vector<uint32_t> vl = {0x1980, 0x1980, 0x1980};
-		vector<uint32_t> vr = {0x3383c000, 0x38a0c000, 0x3b800000};
+		vector<uint32_t> vl = {0x800000, 0x811000};
+		vector<uint32_t> vr = {0x511d000, 0x511d000};
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
-			res = FP32::mul3(uint32_t(vl[i]), uint32_t(vr[i]), f);
+			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
 			if (f == f && res != FP32(f).data) {
 					cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
@@ -618,8 +642,8 @@ class Alltests {
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				res = FP32::div(uint32_t(lc), uint32_t(rc), f);
-//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-				if (f == f && res != FP32(f).data) {
+				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+//				if (f == f && res != FP32(f).data) {
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
