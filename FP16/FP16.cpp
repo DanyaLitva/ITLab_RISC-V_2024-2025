@@ -2,7 +2,6 @@
 //
 #include <iostream>
 
-
 //распределение бит для FP16 1:5:10
 const int manLength = 10;
 const int expLength = 5;
@@ -46,6 +45,7 @@ public:
             for (int i = 0; i < manLength; ++i) {
                 if ((man & (1 << (manLength - 1 - i))) != 0) f += (float)(1 / (float)(1<<(15+i)));
             }
+            if (sign == 1) f *= -1;
         }
         return f;
     }
@@ -390,7 +390,7 @@ FP16 FP16::MulFP16_N_N(FP16 N1, FP16 N2) {
     unsigned int temp2 = (N1.man * N2.man); //сохранять, тут последниий бит разложить на / и %
     unsigned int temp = ((N1.man * N2.man) / (1 << manLength)) + N1.man + N2.man + (1 << manLength);
 
-    unsigned int temp_exp = ((N1.exp - shiftExp) + (N2.exp - shiftExp) + shiftExp);
+    int temp_exp = ((N1.exp - shiftExp) + (N2.exp - shiftExp) + shiftExp);
     if (temp_exp <= 0) {
         temp = temp >> (-1 * temp_exp + 1);
         temp_exp = 0;
@@ -412,7 +412,11 @@ FP16 FP16::MulFP16_N_N(FP16 N1, FP16 N2) {
     }
 
     //округление по отрезанным битам
-    if (((temp2 % (1 << manLength)) >= (1 << (manLength - 1))) || flag) (temp += 1);
+    if ((temp2&(1<<(manLength))) || flag) (temp += 1);
+    if (temp == (1 << manLength)) {
+        Res.exp++;
+        temp = 0;
+    }
 
     Res.man = (temp);
     Res.sign = N1.sign + N2.sign;
@@ -423,66 +427,58 @@ FP16 FP16::MulFP16_N_N(FP16 N1, FP16 N2) {
 //
 FP16 FP16::MulFP16_N_S(FP16 N1, FP16 N2) {
     FP16 A, B, Res;
-    int shiftExp = (1 << (expLength - 1)) - 1; //смещение   -15 ... 16
+    // Определяем, какое число нормальное, а какое субнормальное
     if (N1.IsSubnormal()) {
         A = N1;
-        B = N2;
+        B = N2; 
     }
     else {
-        A = N2;
-        B = N1;
+        A = N2; 
+        B = N1; 
     }
-    //A - субнормальное В - нормальное
-    int flag = 0;
-    unsigned int temp2 = A.man * B.man; //сохранять, тут последниий бит разложить на / и %
-    unsigned int temp = ((A.man * B.man) / (1 << manLength)) + A.man;
+    // A - субнормальное, Б - нормальное
+    Res.sign = A.sign ^ B.sign; // Определяем знак результата
     int temp_exp = B.exp - shiftExp + 1;
-    if (temp_exp <= 0)flag += temp & 1;
-    while (temp_exp <= 0) {
-        temp_exp++;
-        temp /= 2;
-    }
-    Res.exp = temp_exp;
+    unsigned int mul_man = A.man * B.man;
+    unsigned int temp = (mul_man >> manLength) + A.man;
 
-    if (Res.exp == 0) {
+    while (temp_exp < 0) {
+        temp /= 2;
+        temp_exp++;
+    }
+    
+    //проверка на ноль
+    if (temp == 0) {
+        Res.exp = Res.man = 0; return Res;
+    }
+
+    if (temp_exp == 0) {
         if (temp >= (1 << manLength)) {
-            temp -= (1 << manLength);
-            Res.exp++;
+            temp_exp++;
         }
+    }
+
+    if (temp >= (1 << (manLength + 1))) {
+        temp /= 2;
+        temp_exp++;
+    }
+
+    while ((temp_exp > 0) && (temp < (1 << manLength))) {
+        if (temp_exp == 1) temp_exp--;
+        else {
+            temp_exp--;
+            temp *= 2;
+        }
+    }
+
+
+    Res.exp = temp_exp;
+    if (temp_exp == 0) {
         Res.man = temp;
     }
-    else {
-        if (Res.exp == 1) {
-            if (temp < (1 << manLength)) {
-                temp += (1 << manLength);
-                Res.exp--;
-            }
-            if (temp >= (1 << (manLength + 1))) {
-                flag += temp & 1;
-                temp = (temp / 2);
-                Res.exp++;
-            }
-        }
-        else {
-            if (temp < (1 << manLength)) {
-                temp *= 2;
-                Res.exp--;
-            }
+    else Res.man = temp - (1 << manLength);
 
-            if (temp >= (1 << (manLength + 1))) {
-                flag += temp & 1;
-                temp = (temp / 2);
-                Res.exp++;
-            }
-        }
-        if (flag) Res.man++;
-        Res.man = temp - (1 << (manLength));
-    }
-
-    //округление по отрезанным битам
-    if (((temp2 % (1 << manLength)) >= (1 << (manLength - 1))) || flag) (Res.man += 1);
-    Res.sign = N1.sign ^ N2.sign;
-    if (N1.IsNull() || N2.IsNull()) Res.man = (Res.exp = 0);
+    if (N1.IsNull() || N2.IsNull()) Res.exp = Res.man = 0;
     return Res;
 }
 
@@ -496,10 +492,24 @@ FP16 FP16::MulFP16_S_S(FP16 N1, FP16 N2) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using namespace std;
 int main() {
-    float f1 = 13000.f;
-    float f2 = 0.00001f;
+    float f1 = 0.0005f;
+    float f2 = 0.00031f;
     FP16 A(f1);
     FP16 B(f2);
     A.PrintFP16_ed();
@@ -509,19 +519,19 @@ int main() {
     B.PrintFP16_ed();
     cout << endl;
     printf("%.15f", B.GetFloat());
-    cout << endl << endl << (A + B).GetFloat() << endl;
-    cout << f1 + f2 << endl;
+    cout << endl << endl << (A + B).GetFloat() << " - my" << endl;
+    cout << f1 + f2 << " - need" << endl;
     cout << ((A + B).GetFloat() - (f1 + f2)) << endl;
     (A + B).PrintFP16_ed();
     cout << endl;
-    cout << endl << (A * B).GetFloat() << endl;
-    cout << f1 * f2 << endl;
+    cout << endl << (A * B).GetFloat() << " - my" << endl;
+    cout << f1 * f2 << " - need" << endl;
     cout << ((A * B).GetFloat() - f1 * f2) << endl;
     (A * B).PrintFP16_ed();
-    cout << endl;
+    cout << " - my" << endl;
     (FP16(f1*f2)).PrintFP16_ed();
+    cout << " - need" << endl;
     cout << endl;
-    cout << endl;
-    printf("%.15f", FP16(0,13,250).GetFloat());
+   
     return 0;
 }
