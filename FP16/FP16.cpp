@@ -193,6 +193,20 @@ public:
         }
     }
 
+    FP16 operator/(FP16 N2) {
+        FP16 Res;
+        FP16 N, D;
+        N = *this;
+        D = N2;
+        float temp = D.man + (1 << manLength);
+
+
+        FP16 X;
+        
+        
+        return Res;
+    }
+
     //
 protected:
     FP16 AddFP16_N_N(FP16 N1, FP16 N2);
@@ -309,12 +323,12 @@ FP16 FP16::AddFP16_N_N(FP16 N1, FP16 N2) {
         Res.man = (temp - (1 << manLength));
 
         //обработка последнего бита
-        if (flag || N1.exp > N2.exp) {
+        if (flag && N1.exp > N2.exp) {
             //проверяем меньшую мантиссу, которую приводили к порядку большей
             if ((N2.man % (1 << (MaxExp - N2.exp))) >= (1 << (MaxExp - N2.exp - 1)))  Res.man++;
         }
         else {
-            if (flag || N1.exp < N2.exp) {
+            if (flag && N1.exp < N2.exp) {
                 if ((N1.man % (1 << (MaxExp - N1.exp))) >= (1 << (MaxExp - N1.exp - 1)))  Res.man++;
             }
         }
@@ -508,8 +522,8 @@ FP16 FP16::MulFP16_S_S(FP16 N1, FP16 N2) {
 
 using namespace std;
 int main() {
-    float f1 = 0.0005f;
-    float f2 = 0.00031f;
+    float f1 = 50.068f;
+    float f2 = 2.2f;
     FP16 A(f1);
     FP16 B(f2);
     A.PrintFP16_ed();
@@ -523,6 +537,7 @@ int main() {
     cout << f1 + f2 << " - need" << endl;
     cout << ((A + B).GetFloat() - (f1 + f2)) << endl;
     (A + B).PrintFP16_ed();
+
     cout << endl;
     cout << endl << (A * B).GetFloat() << " - my" << endl;
     cout << f1 * f2 << " - need" << endl;
@@ -530,6 +545,16 @@ int main() {
     (A * B).PrintFP16_ed();
     cout << " - my" << endl;
     (FP16(f1*f2)).PrintFP16_ed();
+    cout << " - need" << endl;
+    cout << endl;
+
+    cout << endl;
+    cout << endl << (A / B).GetFloat() << " - my" << endl;
+    cout << f1 / f2 << " - need" << endl;
+    cout << ((A / B).GetFloat() - (f1 / f2)) << endl;
+    (A / B).PrintFP16_ed();
+    cout << " - my" << endl;
+    (FP16(f1 / f2)).PrintFP16_ed();
     cout << " - need" << endl;
     cout << endl;
    
