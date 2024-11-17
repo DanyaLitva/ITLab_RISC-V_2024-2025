@@ -392,9 +392,49 @@ public:
 		return res;
 	}
 
-	static uint32_t newton_iter(uint32_t x, uint32_t d) {
+	static uint32_t newton_iter(uint32_t x, uint32_t d) { // x = x * (2 - r*x) or x = x + x(1 - dx)
 		uint32_t res;
+		float dummy = 0.0;
 
+		uint64_t mx = x & 0x007FFFFF;
+		uint64_t md = d & 0x007FFFFF;
+//		res = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(d, x, dummy), dummy), dummy);
+		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127); // eres = !etmp
+		uint64_t mtmp = mx * md - (mx << 23) - (md << 23);
+		mtmp >>= (etmp == 125);
+		etmp += (etmp == 125);
+		mtmp = 0x8000'0000'0000 * (etmp == 126) + 0x4000'0000'0000 - mx * md - (mx << 23) - (md << 23); // 2 - dx
+
+//		uint64_t mtmp = mx * md + (mx << 23) + (md << 23) + (1ull << 46);
+//		cout << endl << hex << mx << " " << md << " " << mtmp << endl;
+//		if (etmp == 127) {
+//			etmp = 126;
+//			mtmp = (1ull << 47) - mtmp;
+//		}
+//		else if (etmp == 126) {
+//			etmp = 127;
+//			mtmp = (1ull << 48) - mtmp;
+//		}
+		cout << endl << hex << etmp << " " << mtmp << endl;
+		
+		// let this part calculate using standart multiplication
+		
+		// x * tmp left
+
+		if (mtmp < 0x4000'0000'0000) { // mres if less than 2^23
+			etmp -= 1;
+			mtmp <<= 1;
+		}
+		if (mtmp >= 0x8000'0000'0000) { // mres is greater than 2^24
+			etmp += 1;
+			mtmp >>= 1;
+		}
+		cout << etmp << " " << mtmp << endl;
+		mtmp = (mtmp >> 23) + ((mtmp & 0x7F'FFFF) > 0x40'0000) + ((mtmp & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored 
+		cout << mtmp << endl;
+		res = uint32_t(mtmp) - 0x0080'0000 + (etmp << 23);
+		cout << res << endl;
+		res = FP32::mul3(x, res, dummy);
 		return res;
 	}
 
@@ -438,7 +478,8 @@ public:
 			}
 		}
 
-		eres = (el >> 23) + 126 + (mr == 0); // diapason (0.5, 1]
+//		eres = (el >> 23) + 126 + (mr == 0); // diapason (0.5, 1]
+		eres = (el >> 23) + 126; // diapason [0.5, 1)
 		if (er == 0) {
 			--eres; // er += 1 if right is subnormal
 			while (mr < 0x80'0000) { // right to normal
@@ -458,40 +499,45 @@ public:
 		}
 
 		// calculations 
-			r = mr + ((126 + (mr == 0)) << 23); // diapason (0.5, 1]
-			//eres = (el >> 23);
-			//eres -= (er >> 23) - 126; // if el is subnormal? 
-//			cout << hex << endl << "r " << r << endl;
-			uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
+//		r = mr + ((126 + (mr == 0)) << 23); // diapason (0.5, 1]
+		r = mr + (126 << 23); // diapason [0.5, 1)
 
-			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x) or x = x + x(1 - dx)
-			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
-			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // x = x * (2 - r*x)
-			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); // ? нужна 4ая итерация? fma needed
+		//eres = (el >> 23);
+		//eres -= (er >> 23) - 126; // if el is subnormal? 
+//		cout << hex << endl << "r " << r << endl;
+		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
+
+		cout << hex << endl << x << " " << r << endl;
+
+		x = newton_iter(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
+		x = newton_iter(x, r); // x = x * (2 - r*x)
+		x = newton_iter(x, r); // x = x * (2 - r*x)
+		x = newton_iter(x, r); // ? нужна 4ая итерация? fma needed
+
 // 
-//			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
-//			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
-//			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
-//			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
-//			x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//		x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//		x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//		x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//		x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
+//		x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
 
-//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
-//			x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
-//			cout << hex << "r^-1 " << x << endl;
+//		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
+//		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
+//		cout << hex << "r^-1 " << x << endl;
 
-			if (eres >= 255) 
-				return res + 0x7F800000;
-			else if (eres > 0) {
-				l = (eres << 23) + ml;
-				res += FP32::mul3(l, x, dummy); // + 0x80'0000; // l * r mantissa
-			}
-			else if (eres >= -23) {
-				l = ml + 0x80'0000;
-				x -= (-eres + 1) << 23;
-				res += FP32::mul3(l, x, dummy);
-			}
-			else 
-				return res;
+		if (eres >= 255) 
+			return res + 0x7F800000;
+		else if (eres > 0) {
+			l = (eres << 23) + ml;
+			res += FP32::mul3(l, x, dummy); // + 0x80'0000; // l * r mantissa
+		}
+		else if (eres >= -23) {
+			l = ml + 0x80'0000;
+			x -= (-eres + 1) << 23;
+			res += FP32::mul3(l, x, dummy);
+		}
+		else 
+			return res;
 
 		return res;
 	}
