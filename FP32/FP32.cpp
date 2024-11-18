@@ -399,42 +399,53 @@ public:
 		uint64_t mx = x & 0x007FFFFF;
 		uint64_t md = d & 0x007FFFFF;
 //		res = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(d, x, dummy), dummy), dummy);
-		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127); // eres = !etmp
-		uint64_t mtmp = mx * md - (mx << 23) - (md << 23);
+		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
+		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
 		mtmp >>= (etmp == 125);
+		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
 		etmp += (etmp == 125);
-		mtmp = 0x8000'0000'0000 * (etmp == 126) + 0x4000'0000'0000 - mx * md - (mx << 23) - (md << 23); // 2 - dx
+		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp; // 2 - dx; md = ...
+//		md = mtmp; //
 
-//		uint64_t mtmp = mx * md + (mx << 23) + (md << 23) + (1ull << 46);
-//		cout << endl << hex << mx << " " << md << " " << mtmp << endl;
-//		if (etmp == 127) {
-//			etmp = 126;
-//			mtmp = (1ull << 47) - mtmp;
-//		}
-//		else if (etmp == 126) {
-//			etmp = 127;
-//			mtmp = (1ull << 48) - mtmp;
-//		}
-		cout << endl << hex << etmp << " " << mtmp << endl;
-		
-		// let this part calculate using standart multiplication
+//		cout << endl << hex << etmp << " " << mtmp << endl; //
 		
 		// x * tmp left
 
-		if (mtmp < 0x4000'0000'0000) { // mres if less than 2^23
+		// x is 24 bit len, tmp is 49 bit len (including leading bit)
+		// the x*tmp result is 73 bit len, should be reduced to 24 bit - 9 bit longes than 64
+		// the idea is to multiply x as 39 bit len number, x*tmp result is 39+49 = 88 bit, that is 24 bit longer than 64
+		// the result is close enough to 1.0, that's why it cannot be 2.0 after rounding - 1 if can be used
+		// x <<= 39 - 24 = 15
+
+		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
 			etmp -= 1;
-			mtmp <<= 1;
+//			mtmp <<= 1;
 		}
-		if (mtmp >= 0x8000'0000'0000) { // mres is greater than 2^24
+		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
 			etmp += 1;
-			mtmp >>= 1;
+//			mtmp >>= 1;
 		}
-		cout << etmp << " " << mtmp << endl;
-		mtmp = (mtmp >> 23) + ((mtmp & 0x7F'FFFF) > 0x40'0000) + ((mtmp & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored 
-		cout << mtmp << endl;
-		res = uint32_t(mtmp) - 0x0080'0000 + (etmp << 23);
-		cout << res << endl;
-		res = FP32::mul3(x, res, dummy);
+		etmp = etmp + ((x & 0x7F800000) >> 23) - 127; // eres
+		
+//		mx * mtmp = (x1*2^32 + y1)*(x2*2^32 + y2) = x1x2*2^64 + y1y2 + x1y2*2^32 + y1x2*2^32 // idea is mul 50 bit * 50 bit
+		mx += 0x0080'0000;
+		mx <<= 15;
+		uint64_t x1 = mx >> 32, y1 = mx & 0xFFFF'FFFF, x2 = mtmp >> 32, y2 = mtmp & 0xFFFF'FFFF;
+
+		res = x1 * x2 + ((x1 * y2) >> 32) + ((y1 * x2) >> 32);
+		md = y1 * y2 + ((x1 * y2) & 32) + ((y1 * x2) & 32);
+
+//		cout << etmp << " " << mtmp << endl; //
+//		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
+//		if (mtmp >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
+//				etmp += 1;
+//				mtmp >>= 1;
+//			}
+//		cout << mtmp << endl; //
+
+//		res = uint32_t(mtmp) - 0x0080'0000 + (etmp << 23);
+//		cout << res << endl; //
+//		res = FP32::mul3(x, res, dummy);
 		return res;
 	}
 
@@ -507,12 +518,20 @@ public:
 //		cout << hex << endl << "r " << r << endl;
 		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 
-		cout << hex << endl << x << " " << r << endl;
+//		cout << hex << endl << x << " " << r << endl; //
 
 		x = newton_iter(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter(x, r); // x = x * (2 - r*x)
 		x = newton_iter(x, r); // x = x * (2 - r*x)
 		x = newton_iter(x, r); // ? нужна 4ая итерация? fma needed
+//		x = newton_iter(x, r);
+//		x = newton_iter(x, r);
+//		x = newton_iter(x, r);
+//		x = newton_iter(x, r);
+//		x = newton_iter(x, r);
+//		x = newton_iter(x, r);
+//		x = newton_iter(x, r);
+//		x = newton_iter(x, r);
 
 // 
 //		x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
@@ -669,10 +688,10 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 2;
+		size_t from = 3;
 
-		vector<uint32_t> vl = {0x800000, 0x811000};
-		vector<uint32_t> vr = {0x511d000, 0x511d000};
+		vector<uint32_t> vl = {0x800000, 0x811000, 0x811000};
+		vector<uint32_t> vr = {0xf81000, 0x511d000, 0x520b000};
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
