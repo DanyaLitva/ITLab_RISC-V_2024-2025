@@ -425,15 +425,29 @@ public:
 			etmp += 1;
 //			mtmp >>= 1;
 		}
-		etmp = etmp + ((x & 0x7F800000) >> 23) - 127; // eres
+		etmp = (etmp << 23) + x - 0x3F800000; // eres
 		
-//		mx * mtmp = (x1*2^32 + y1)*(x2*2^32 + y2) = x1x2*2^64 + y1y2 + x1y2*2^32 + y1x2*2^32 // idea is mul 50 bit * 50 bit
+
+		// mx * mtmp = (x1*2^32 + y1)*(x2*2^32 + y2) = x1x2*2^64 + y1y2 + x1y2*2^32 + y1x2*2^32 = mx*2^64 + md// idea is mul 50 bit * 50 bit
+		// increasing x up to 39 bit len
 		mx += 0x0080'0000;
 		mx <<= 15;
-		uint64_t x1 = mx >> 32, y1 = mx & 0xFFFF'FFFF, x2 = mtmp >> 32, y2 = mtmp & 0xFFFF'FFFF;
 
-		res = x1 * x2 + ((x1 * y2) >> 32) + ((y1 * x2) >> 32);
-		md = y1 * y2 + ((x1 * y2) & 32) + ((y1 * x2) & 32);
+		// counting using 2^50 mod
+		uint64_t x1 = mx >> 25, y1 = mx & 0x1FF'FFFF, x2 = mtmp >> 25, y2 = mtmp & 0x1FF'FFFF;
+		md = y1 * y2 + ((x1 * y2) & 0x1FF'FFFF) + ((y1 * x2) & 0x1FF'FFFF);
+		mx = x1 * x2 + ((x1 * y2) >> 25) + ((y1 * x2) >> 25) + (md >> 50); // + md / 2^50
+		md &= 0x0003'FFFF'FFFF'FFFF; // % 2^50
+
+		// translation into 2^64 mod
+		res = mx >> 14; // res = mx / 2^14
+		md += ((mx & 0x3FFF) << 50); // md = md + mx & 2^14 (mx = mx'*2^50)
+
+		// rounding
+		res += (md > 0x8000'0000'0000'0000) + (md == 0x8000'0000'0000'0000) * ((res & 0x1) == 1);
+
+		// making result
+		res = etmp + res - 0x0080'0000;
 
 //		cout << etmp << " " << mtmp << endl; //
 //		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
@@ -688,15 +702,15 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 3;
+		size_t from = 0;
 
-		vector<uint32_t> vl = {0x800000, 0x811000, 0x811000};
-		vector<uint32_t> vr = {0xf81000, 0x511d000, 0x520b000};
+		vector<uint32_t> vl = {0x800000, 0x800000, 0x811000, 0x811000};
+		vector<uint32_t> vr = {0x800000, 0xf81000, 0x511d000, 0x520b000};
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
 			if (f == f && res != FP32(f).data) {
-					cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
+					cout << hex << endl << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
