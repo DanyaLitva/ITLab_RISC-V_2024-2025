@@ -167,15 +167,14 @@ public:
     }
 
     //
-    FP16 operator-(FP16 N2) {
-        FP16 temp;
-        temp = *this;
-        ++temp.sign;
+    FP16 operator-(FP16 N2) const {
+        FP16 temp(*this);
+        ++N2.sign;
         return (temp + N2);
     }
 
     //
-    FP16 operator-() {
+    FP16 operator-() const {
         FP16 temp;
         temp = *this;
         ++temp.sign;
@@ -196,16 +195,50 @@ public:
     FP16 operator/(FP16 N2) {
         FP16 Res;
         FP16 N, D;
+        FP16 a, b, z, t,s;
         N = *this;
         D = N2;
-        float temp = D.man + (1 << manLength);
+        
+
+        //D на отрезке от 0.5 до 1
+        while ((D.exp - shiftExp) < -1) {
+            D.exp++;
+            N.exp++;
+        }
+        while ((D.exp - shiftExp) > -1) {
+            D.exp--;
+            N.exp--;
+        }
+        
+        FP16 X = FP16(48.f / 17.f) - (FP16(32.f / 17.f) * D);
+        //FP16 X = FP16(1.f/17.f)*(FP16(48.f) - (FP16(32.f) * D));
+        
+        //X = (FP16(2.0f) * X) - (D * X * X);
+        X = X * ((FP16(2.0f)) - (D * X));
+
+        a = (D - FP16(0.5f)) * X;
+        b = FP16(0.5f) * X;
+        s = a + b;
+        z = s - a;
+        t = b - z;
+
+        X = (FP16(2.0f) * X) - (s * X) - (t * X);
 
 
-        FP16 X;
-        
-        
+         //добавить округление при 0.5 в зависимости от последнего бита
+         //если пред четное, то не округляется вверх,
+        Res = N * X;
         return Res;
     }
+
+
+    float GetLastBit() {
+        float temp = pow(2, abs((int)exp - shiftExp - manLength));
+        if (((int)exp - shiftExp - manLength) < 0) temp = 1 / temp;
+        return temp;
+    }
+
+
 
     //
 protected:
@@ -217,8 +250,6 @@ protected:
     FP16 MulFP16_S_S(FP16 N1, FP16 N2);
 
     //
-
-
 
 };
 
@@ -302,13 +333,22 @@ FP16 FP16::AddFP16_N_N(FP16 N1, FP16 N2) {
         else shift = (1 << (manLength - diff));
         if (manLength == diff) shift = 1;
 
-        temp = pow(-1, N1.sign) * (N1.man >> (MaxExp - N1.exp)) + pow(-1, N2.sign) * (N2.man >> (MaxExp - N2.exp)) + pow(-1, sign_Min) * shift + pow(-1, sign_Max) * (1 << manLength);
+        temp = (pow(-1, N1.sign) * (N1.man >> (MaxExp - N1.exp))) + (pow(-1, N2.sign) * (N2.man >> (MaxExp - N2.exp))) + (pow(-1, sign_Min) * shift) + (pow(-1, sign_Max) * (1 << manLength));
 
+
+        if (N1.exp > N2.exp) {
+            flag = 1 & (N2.man >> (MaxExp - N2.exp - 1));
+        }
+        if (N1.exp < N2.exp) {
+            flag = 1 & (N1.man >> (MaxExp - N1.exp - 1));
+        }
         if (temp < 0) Res.sign = 1;
         else Res.sign = 0;
         temp = abs(temp);
 
-        if ((temp < (1 << manLength)) && (MaxExp > 0)) {
+        if (temp == 0) MaxExp = 0;
+
+        while ((temp < (1 << manLength)) && (MaxExp > 0)) {
             temp *= 2;
             MaxExp--;
         }
@@ -321,15 +361,16 @@ FP16 FP16::AddFP16_N_N(FP16 N1, FP16 N2) {
 
         Res.exp = MaxExp;
         Res.man = (temp - (1 << manLength));
-
         //обработка последнего бита
-        if (flag && N1.exp > N2.exp) {
+        if (flag && (N1.exp > N2.exp)) {
             //проверяем меньшую мантиссу, которую приводили к порядку большей
-            if ((N2.man % (1 << (MaxExp - N2.exp))) >= (1 << (MaxExp - N2.exp - 1)))  Res.man++;
+            if ((N2.man % (1 << (MaxExp - N2.exp))) >= (1 << (MaxExp - N2.exp - 1)))  
+                Res.man = Res.man + pow(-1,N2.sign);
         }
         else {
-            if (flag && N1.exp < N2.exp) {
-                if ((N1.man % (1 << (MaxExp - N1.exp))) >= (1 << (MaxExp - N1.exp - 1)))  Res.man++;
+            if (flag && (N1.exp <= N2.exp)) {
+                if ((N1.man % (1 << (MaxExp - N1.exp))) >= (1 << (MaxExp - N1.exp - 1)))  
+                    Res.man = Res.man + pow(-1, N1.sign);
             }
         }
     }
@@ -349,22 +390,21 @@ FP16 FP16::AddFP16_N_S(FP16 N1, FP16 N2) {
     int shiftExp = (1 << (expLength - 1)) - 1;
     if (N1.IsSubnormal()) {
         A = N1;
-        //AssignFP16(&A, N1);
         B = N2;
-        //AssignFP16(&B, N2);
     }
     else {
         A = N2;
-        //AssignFP16(&A, N2);
         B = N1;
-        //AssignFP16(&B, N1);
     }
     //A - субнормальное В - нормальное
     Res.sign = B.sign;
     int diff = (B.exp - shiftExp) + (shiftExp - 1);
     int temp;
+
     if (diff != 0) temp = pow(-1, B.sign) * ((1 << manLength) + B.man) + (pow(-1, A.sign) * (A.man >> diff));
     else temp = pow(-1, B.sign) * ((1 << manLength) + B.man) + (pow(-1, A.sign) * A.man);
+
+    //int flag = 0;
 
     Res.exp = B.exp;
     if ((temp >= (1 << (manLength + 1)) && (Res.exp < ((1 << (expLength)) - 1)))) {
@@ -416,23 +456,29 @@ FP16 FP16::MulFP16_N_N(FP16 N1, FP16 N2) {
             temp_exp++;
         }
     }
-    Res.exp = temp_exp;
+    
 
     int flag = 0;
     if (temp >= (1 << (manLength + 1))) {
         flag += (temp & 1);
         temp /= 2; //и здесь один бит теряется
-        Res.exp++;
+        temp_exp++;
     }
 
     //округление по отрезанным битам
-    if ((temp2&(1<<(manLength))) || flag) (temp += 1);
-    if (temp == (1 << (manLength+1)) || temp == (1 << (manLength))) {
-        Res.exp++;
+    //теперь к ближайшему четному
+    if (((temp2 & (1 << (manLength))) || flag) && ((temp_exp & 1) == 1))
+        (temp += 1);
+    if (temp == (1 << (manLength+1)) || ((temp == (1 << (manLength))) && (temp_exp == 0))) {
+        temp_exp++;
         temp = 0;
     }
-
+    Res.exp = temp_exp;
     Res.man = (temp);
+    if (temp_exp>=(1<<expLength)){
+        Res.exp = (1<<manLength)-1;
+        Res.man = 0;
+    }
     Res.sign = N1.sign + N2.sign;
     if (N1.IsNull() || N2.IsNull()) Res.man = (Res.exp = 0);
     return Res;
@@ -514,58 +560,195 @@ FP16 FP16::MulFP16_S_S(FP16 N1, FP16 N2) {
 
 
 
+void Test_Mult();
+void Test_Add();
+void Test_Sub();
 
 
+/*1 - A   0.124695 - B
+0.875977 - my   0.875305 - need
+0_01110_1100000010 - my
+0_01110_1100000000 - need
 
+1 - A   0.234985 - B
+0.765625 - my   0.765015 - need
+0_01110_1000100000 - my
+0_01110_1000011110 - need
 
+1 - A   0.235962 - B
+0.764648 - my   0.764038 - need
+0_01110_1000011110 - my
+0_01110_1000011100 - need
 
+1 - A   0.236938 - B
+0.763672 - my   0.763062 - need
+0_01110_1000011100 - my
+0_01110_1000011010 - need
+
+1 - A   0.237915 - B
+0.762695 - my   0.762085 - need
+0_01110_1000011010 - my
+0_01110_1000011000 - need*/
 
 using namespace std;
 int main() {
-    float f1 = 5000.068f;
-    float f2 = 0.0002f;
+    //Test_Mult();
+
+    float f1 = 1;
+    float f2 = 0.235962;
+    
     FP16 A(f1);
     FP16 B(f2);
     f1 = A.GetFloat();
     f2 = B.GetFloat();
     A.PrintFP16_ed();
     cout << endl;
-    printf("%.15f", A.GetFloat());
+    printf("A = %.15f", A.GetFloat());
     cout << endl;
     B.PrintFP16_ed();
-    printf("\n%.15f", B.GetFloat());
+    printf("\nB = %.15f", B.GetFloat());
     cout << endl;
+
     
+
     cout << endl;
+    cout << "Operator +";
     cout << endl << (A + B).GetFloat() << " - my" << endl;
     cout << f1 + f2 << " - need" << endl;
-    cout << ((A + B).GetFloat() - (f1 + f2)) << endl;
+    cout << ((A + B).GetFloat() - (f1 + f2))<< " - calculation error" << endl;
+    cout << (A + B).GetLastBit()<<"- the value of the last bit" << endl;
     (A + B).PrintFP16_ed();
     cout << " - my" << endl;
-    (FP16(f1+f2)).PrintFP16_ed();
+    (FP16(f1 + f2)).PrintFP16_ed();
     cout << " - need" << endl;
     cout << endl;
 
+
     cout << endl;
+    cout << "Operator -";
+    cout << endl << (A - B).GetFloat() << " - my" << endl;
+    cout << f1 - f2 << " - need" << endl;
+    cout << ((A - B).GetFloat() - (f1 - f2)) << " - calculation error" << endl;
+    cout << (A - B).GetLastBit() << "- the value of the last bit" << endl;
+    (A - B).PrintFP16_ed();
+    cout << " - my" << endl;
+    (FP16(f1 - f2)).PrintFP16_ed();
+    cout << " - need" << endl;
+    cout << endl;
+
+
+    cout << endl;
+    cout << "Operator *";
     cout << endl << (A * B).GetFloat() << " - my" << endl;
     cout << f1 * f2 << " - need" << endl;
-    cout << ((A * B).GetFloat() - f1 * f2) << endl;
+    cout << ((A * B).GetFloat() - (f1 * f2)) << " - calculation error" << endl;
+    cout << (A * B).GetLastBit() << "- the value of the last bit" << endl;
     (A * B).PrintFP16_ed();
     cout << " - my" << endl;
-    (FP16(f1*f2)).PrintFP16_ed();
+    (FP16(f1 * f2)).PrintFP16_ed();
     cout << " - need" << endl;
     cout << endl;
 
-    /*
+    
     cout << endl;
+    cout << "Operator /";
     cout << endl << (A / B).GetFloat() << " - my" << endl;
     cout << f1 / f2 << " - need" << endl;
-    cout << ((A / B).GetFloat() - (f1 / f2)) << endl;
+    cout << ((A / B).GetFloat() - (f1 / f2)) << " - calculation error" << endl;
+    cout << (A / B).GetLastBit() << "- the value of the last bit" << endl;
     (A / B).PrintFP16_ed();
     cout << " - my" << endl;
     (FP16(f1 / f2)).PrintFP16_ed();
     cout << " - need" << endl;
     cout << endl;
-     */
+
+
+    
     return 0;
+}
+
+
+void Test_Mult() {
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 15; exp1 < (1 << expLength); ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength); ++exp2) {
+                        for (size_t man2 = 900; man2 < (1 << manLength); ++man2) {
+                            FP16 A(sign1, exp1, man1);
+                            FP16 B(sign2, exp2, man2);
+                            if (((A * B).GetFloat() - (A.GetFloat() * B.GetFloat())) > ((A * B).GetLastBit())) {
+                                cout << A.GetFloat() << " - A\t" << B.GetFloat() <<" - B" << endl;
+                                cout << (A * B).GetFloat() << " - my\t" << (A.GetFloat() * B.GetFloat()) <<" - need" << endl;
+                                (A * B).PrintFP16_ed();
+                                cout << " - my" << endl;
+                                FP16((A.GetFloat() * B.GetFloat())).PrintFP16_ed();
+                                cout << " - need" << endl;
+                                cout << endl;
+                            }
+                        }
+                    }
+                }
+            }
+            cout << "Exp = " << exp1 << endl;
+        }
+    }
+}
+
+
+
+void Test_Add() {
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 0; exp1 < (1 << expLength); ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength); ++exp2) {
+                        for (size_t man2 = 900; man2 < (1 << manLength); ++man2) {
+                            FP16 A(sign1, exp1, man1);
+                            FP16 B(sign2, exp2, man2);
+                            if (((A + B).GetFloat() - (A.GetFloat() + B.GetFloat())) > ((A + B).GetLastBit())) {
+                                cout << A.GetFloat() << " - A\t" << B.GetFloat() << " - B" << endl;
+                                cout << (A + B).GetFloat() << " - my\t" << (A.GetFloat() + B.GetFloat()) << " - need" << endl;
+                                (A + B).PrintFP16_ed();
+                                cout << " - my" << endl;
+                                FP16((A.GetFloat() + B.GetFloat())).PrintFP16_ed();
+                                cout << " - need" << endl;
+                                cout << endl;
+                            }
+                        }
+                    }
+                }
+            }
+            cout << "Exp = " << exp1 << endl;
+        }
+    }
+}
+
+
+
+void Test_Sub() {
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 16; exp1 < (1 << expLength); ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength); ++exp2) {
+                        for (size_t man2 = 900; man2 < (1 << manLength); ++man2) {
+                            FP16 A(sign1, exp1, man1);
+                            FP16 B(sign2, exp2, man2);
+                            if (((A - B).GetFloat() - (A.GetFloat() - B.GetFloat())) > ((A - B).GetLastBit())) {
+                                cout << A.GetFloat() << " - A\t" << B.GetFloat() << " - B" << endl;
+                                cout << (A - B).GetFloat() << " - my\t" << (A.GetFloat() - B.GetFloat()) << " - need" << endl;
+                                (A - B).PrintFP16_ed();
+                                cout << " - my" << endl;
+                                FP16((A.GetFloat() - B.GetFloat())).PrintFP16_ed();
+                                cout << " - need" << endl;
+                                cout << endl;
+                            }
+                        }
+                    }
+                }
+            }
+            cout << "Exp = " << exp1 << endl;
+        }
+    }
 }
