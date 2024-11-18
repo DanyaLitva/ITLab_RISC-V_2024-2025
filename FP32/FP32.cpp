@@ -395,17 +395,22 @@ public:
 	static uint32_t newton_iter(uint32_t x, uint32_t d) { // x = x * (2 - r*x) or x = x + x(1 - dx)
 		uint32_t res;
 		float dummy = 0.0;
+		int outCounter = 0;
+		cout << endl << ++outCounter << ": " << hex << x << " " << d << endl; // input data
 
 		uint64_t mx = x & 0x007FFFFF;
 		uint64_t md = d & 0x007FFFFF;
 //		res = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(d, x, dummy), dummy), dummy);
 		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
 		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
+		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // correct
+
 		mtmp >>= (etmp == 125);
 		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
 		etmp += (etmp == 125);
 		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp; // 2 - dx; md = ...
 //		md = mtmp; //
+		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // correct
 
 //		cout << endl << hex << etmp << " " << mtmp << endl; //
 		
@@ -415,6 +420,7 @@ public:
 		// the x*tmp result is 73 bit len, should be reduced to 24 bit - 9 bit longes than 64
 		// the idea is to multiply x as 39 bit len number, x*tmp result is 39+49 = 88 bit, that is 24 bit longer than 64
 		// the result is close enough to 1.0, that's why it cannot be 2.0 after rounding - 1 if can be used
+		// that's a lie! you should make an if to the exponent!
 		// x <<= 39 - 24 = 15
 
 		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
@@ -425,29 +431,34 @@ public:
 			etmp += 1;
 //			mtmp >>= 1;
 		}
-		etmp = (etmp << 23) + x - 0x3F800000; // eres
-		
+		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
+		cout << ++outCounter << ": " << etmp << endl; // correct
 
 		// mx * mtmp = (x1*2^32 + y1)*(x2*2^32 + y2) = x1x2*2^64 + y1y2 + x1y2*2^32 + y1x2*2^32 = mx*2^64 + md// idea is mul 50 bit * 50 bit
 		// increasing x up to 39 bit len
 		mx += 0x0080'0000;
 		mx <<= 15;
+		cout << ++outCounter << ": " << mx << endl; //
 
 		// counting using 2^50 mod
 		uint64_t x1 = mx >> 25, y1 = mx & 0x1FF'FFFF, x2 = mtmp >> 25, y2 = mtmp & 0x1FF'FFFF;
 		md = y1 * y2 + ((x1 * y2) & 0x1FF'FFFF) + ((y1 * x2) & 0x1FF'FFFF);
 		mx = x1 * x2 + ((x1 * y2) >> 25) + ((y1 * x2) >> 25) + (md >> 50); // + md / 2^50
 		md &= 0x0003'FFFF'FFFF'FFFF; // % 2^50
+		cout << ++outCounter << ": " << mx << " " << md << endl;
 
 		// translation into 2^64 mod
 		res = mx >> 14; // res = mx / 2^14
 		md += ((mx & 0x3FFF) << 50); // md = md + mx & 2^14 (mx = mx'*2^50)
+		cout << ++outCounter << ": " << res << " " << md << endl;
 
 		// rounding
 		res += (md > 0x8000'0000'0000'0000) + (md == 0x8000'0000'0000'0000) * ((res & 0x1) == 1);
+		cout << ++outCounter << ": " << res << endl;
 
 		// making result
 		res = etmp + res - 0x0080'0000;
+		cout << ++outCounter << ": " << res << endl;
 
 //		cout << etmp << " " << mtmp << endl; //
 //		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
