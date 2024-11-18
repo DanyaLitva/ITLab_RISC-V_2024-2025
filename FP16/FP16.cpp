@@ -17,7 +17,7 @@ public:
 
 
     //
-    FP16::FP16(int _sign = 0, int _exp = 0, int _man = 0) :sign(_sign), exp(_exp), man(_man) {}
+    FP16(int _sign = 0, int _exp = 0, int _man = 0) :sign(_sign), exp(_exp), man(_man) {}
     
     //
     float ConvertFP16tof() const {
@@ -427,7 +427,7 @@ FP16 FP16::MulFP16_N_N(FP16 N1, FP16 N2) {
 
     //округление по отрезанным битам
     if ((temp2&(1<<(manLength))) || flag) (temp += 1);
-    if (temp == (1 << manLength)) {
+    if (temp == (1 << (manLength+1)) || temp == (1 << (manLength))) {
         Res.exp++;
         temp = 0;
     }
@@ -522,21 +522,29 @@ FP16 FP16::MulFP16_S_S(FP16 N1, FP16 N2) {
 
 using namespace std;
 int main() {
-    float f1 = 50.068f;
-    float f2 = 2.2f;
+    float f1 = 5000.068f;
+    float f2 = 0.0002f;
     FP16 A(f1);
     FP16 B(f2);
+    f1 = A.GetFloat();
+    f2 = B.GetFloat();
     A.PrintFP16_ed();
     cout << endl;
     printf("%.15f", A.GetFloat());
     cout << endl;
     B.PrintFP16_ed();
+    printf("\n%.15f", B.GetFloat());
     cout << endl;
-    printf("%.15f", B.GetFloat());
-    cout << endl << endl << (A + B).GetFloat() << " - my" << endl;
+    
+    cout << endl;
+    cout << endl << (A + B).GetFloat() << " - my" << endl;
     cout << f1 + f2 << " - need" << endl;
     cout << ((A + B).GetFloat() - (f1 + f2)) << endl;
     (A + B).PrintFP16_ed();
+    cout << " - my" << endl;
+    (FP16(f1+f2)).PrintFP16_ed();
+    cout << " - need" << endl;
+    cout << endl;
 
     cout << endl;
     cout << endl << (A * B).GetFloat() << " - my" << endl;
@@ -548,6 +556,7 @@ int main() {
     cout << " - need" << endl;
     cout << endl;
 
+    /*
     cout << endl;
     cout << endl << (A / B).GetFloat() << " - my" << endl;
     cout << f1 / f2 << " - need" << endl;
@@ -557,6 +566,6 @@ int main() {
     (FP16(f1 / f2)).PrintFP16_ed();
     cout << " - need" << endl;
     cout << endl;
-   
+     */
     return 0;
 }
