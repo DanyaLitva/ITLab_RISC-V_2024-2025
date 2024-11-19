@@ -425,13 +425,13 @@ public:
 		
 		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
 			etmp -= 1;
-			mtmp <<= 1;
+//			mtmp <<= 1;
 		}
 		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
 			etmp += 1;
-			mtmp >>= 1;
+//			mtmp >>= 1;
 		}
-		/*
+		
 		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
 		cout << ++outCounter << ": " << etmp << endl; // correct
 
@@ -443,7 +443,7 @@ public:
 
 		// counting using 2^52 mod
 		uint64_t x1 = mx >> 26, y1 = mx & 0x3FF'FFFF, x2 = mtmp >> 26, y2 = mtmp & 0x3FF'FFFF;
-		cout << ++outCounter << ": " << x1 << " " << y1 << " " << x2 << " " << y2 << endl;
+//		cout << ++outCounter << ": " << x1 << " " << y1 << " " << x2 << " " << y2 << endl;
 		md = y1 * y2 + ((x1 * y2) & 0x3FF'FFFF) + ((y1 * x2) & 0x3FF'FFFF); // lover half
 		mx = x1 * x2 + ((x1 * y2) >> 26) + ((y1 * x2) >> 26) + (md >> 52); // upper half, + md / 2^52
 		md &= 0x000F'FFFF'FFFF'FFFF; // % 2^52, lover half
@@ -459,15 +459,16 @@ public:
 		etmp += (res >= 0x100'0000);
 		res >>= (res >= 0x100'0000);
 		cout << ++outCounter << ": " << res << endl;
-		// OVERFLOW OF ROUNDING TO EXPONENT!!!!
 
 		// making result
-		*/
-		res = etmp + res/* - 0x0080'0000*/;
-//		cout << ++outCounter << ": " << res << endl;
+		
+		res = etmp + res - 0x0080'0000; // -?
+//		res = etmp + res;
+		cout << ++outCounter << ": " << res << endl;
 		
 
 //		cout << etmp << " " << mtmp << endl; //
+		/*
 		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
 		if (mtmp >= 0x0100'0000) { // mres is greater than 2^23 (2^24) // should I?
 				etmp += 1;
@@ -478,7 +479,53 @@ public:
 		res = uint32_t(mtmp) - 0x0080'0000 + (etmp << 23);
 		cout << res << endl; //
 		res = FP32::mul3(x, res, dummy);
+		*/
 		return res;
+	}
+
+	static uint32_t newton_iter2(uint32_t x, uint32_t d) {
+		uint32_t res;
+		int outCounter = 0;
+		cout << endl << ++outCounter << ": " << hex << x << " " << d << endl; // input data
+
+		uint64_t mx = x & 0x007FFFFF;
+		uint64_t md = d & 0x007FFFFF;
+		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
+		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
+//		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; //
+
+		mtmp >>= (etmp == 125);
+		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
+		etmp += (etmp == 125);
+		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp;
+
+		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // 
+
+		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
+			etmp -= 1;
+		}
+		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
+			etmp += 1;
+		}
+		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
+
+		mx += 0x0080'0000; // mx is 24 bit long, etmp should be 40 bit long
+
+//		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
+		mtmp = (mtmp >> 9) + ((mtmp & 0x01FF) > 0x0100) + ((mtmp & 0x03FF) == 0x0300);
+		cout << ++outCounter << ": " << mtmp << endl; //
+
+		mtmp = mtmp * mx;
+		cout << ++outCounter << ": " << mtmp << endl; //
+
+		res = (mtmp >> 40) + ((mtmp & 0xFF'FFFF'FFFF) > 0x80'0000'0000) + ((mtmp & 0x1FF'FFFF'FFFF) == 0x180'0000'0000);
+		cout << ++outCounter << ": " << res << endl; //
+//		res = etmp + res - 0x0080'0000;
+		res = etmp + res;
+
+		cout << ++outCounter << ": " << res << endl; //
+		return res;
+		
 	}
 
 	static uint32_t div(uint32_t l, uint32_t r, float& example) noexcept {
@@ -551,7 +598,7 @@ public:
 		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 
 //		cout << hex << endl << x << " " << r << endl; //
-		
+		/*
 		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy);
 		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy);
 		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy);
@@ -571,12 +618,12 @@ public:
 		tmp = FP32::sub(tmp, FP32::mul3(x, s, dummy), dummy);
 		tmp = FP32::sub(tmp, FP32::mul3(x, t, dummy), dummy);
 		x = tmp;
-//		x = FP32::add3(x, FP32::mul3(x, t, dummy), dummy); // x += x * t // -t?
+//		x = FP32::add3(x, FP32::mul3(x, t, dummy), dummy); // x += x * t // -t? */
 
-//		x = newton_iter(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
-//		x = newton_iter(x, r); // x = x * (2 - r*x)
-//		x = newton_iter(x, r); // x = x * (2 - r*x)
-//		x = newton_iter(x, r); // ? нужна 4ая итерация? fma needed
+		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
+		x = newton_iter2(x, r); // x = x * (2 - r*x)
+		x = newton_iter2(x, r); // x = x * (2 - r*x)
+		x = newton_iter2(x, r); // ? нужна 4ая итерация? fma needed
 //		x = newton_iter(x, r);
 //		x = newton_iter(x, r);
 //		x = newton_iter(x, r);
@@ -585,6 +632,11 @@ public:
 //		x = newton_iter(x, r);
 //		x = newton_iter(x, r);
 //		x = newton_iter(x, r);
+
+//		x = newton_iter2(x, r);
+//		x = newton_iter2(x, r);
+//		x = newton_iter2(x, r);
+//		x = newton_iter2(x, r);
 
 // 
 //		x = FP32::sub( FP32::mul3( 0x40000000, x, dummy ), FP32::mul3 ( r, FP32::mul3( x, x, dummy ), dummy), dummy );
