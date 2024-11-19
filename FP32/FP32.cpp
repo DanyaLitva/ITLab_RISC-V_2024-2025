@@ -440,29 +440,33 @@ public:
 		mx <<= 15;
 		cout << ++outCounter << ": " << mx << endl; //
 
-		// counting using 2^50 mod
-		uint64_t x1 = mx >> 25, y1 = mx & 0x1FF'FFFF, x2 = mtmp >> 25, y2 = mtmp & 0x1FF'FFFF;
-		md = y1 * y2 + ((x1 * y2) & 0x1FF'FFFF) + ((y1 * x2) & 0x1FF'FFFF);
-		mx = x1 * x2 + ((x1 * y2) >> 25) + ((y1 * x2) >> 25) + (md >> 50); // + md / 2^50
-		md &= 0x0003'FFFF'FFFF'FFFF; // % 2^50
+		// counting using 2^52 mod
+		uint64_t x1 = mx >> 26, y1 = mx & 0x3FF'FFFF, x2 = mtmp >> 26, y2 = mtmp & 0x3FF'FFFF;
+		md = y1 * y2 + ((x1 * y2) & 0x3FF'FFFF) + ((y1 * x2) & 0x3FF'FFFF);
+		mx = x1 * x2 + ((x1 * y2) >> 26) + ((y1 * x2) >> 26) + (md >> 52); // + md / 2^52
+		md &= 0x000F'FFFF'FFFF'FFFF; // % 2^52
 		cout << ++outCounter << ": " << mx << " " << md << endl;
 
 		// translation into 2^64 mod
-		res = mx >> 14; // res = mx / 2^14
-		md += ((mx & 0x3FFF) << 50); // md = md + mx & 2^14 (mx = mx'*2^50)
+		res = mx >> 12; // res = mx / 2^12
+		md += ((mx & 0x0FFF) << 52); // md = mx + mx & 2^12 (mx = mx'*2^52) I DONT LIKE THIS LINE
 		cout << ++outCounter << ": " << res << " " << md << endl;
 
 		// rounding
-		res += (md > 0x8000'0000'0000'0000) + (md == 0x8000'0000'0000'0000) * ((res & 0x1) == 1);
+		res += (md > 0x8000'0000'0000'0000) + (md == 0x8000'0000'0000'0000) * ((res & 0x1) == 0x1);
+		etmp += (res >= 0x100'0000);
+		res >>= (res >= 0x100'0000);
 		cout << ++outCounter << ": " << res << endl;
 
+		// OVERFLOW OF ROUNDING TO EXPONENT!!!!
+
 		// making result
-		res = etmp + res - 0x0080'0000;
+		res = etmp + res/* - 0x0080'0000*/;
 		cout << ++outCounter << ": " << res << endl;
 
 //		cout << etmp << " " << mtmp << endl; //
 //		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
-//		if (mtmp >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
+//		if (mtmp >= 0x0100'0000) { // mres is greater than 2^23 (2^24) // should I?
 //				etmp += 1;
 //				mtmp >>= 1;
 //			}
