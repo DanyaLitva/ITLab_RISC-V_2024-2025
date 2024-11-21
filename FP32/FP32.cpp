@@ -396,50 +396,52 @@ public:
 		uint32_t res;
 		float dummy = 0.0;
 		int outCounter = 0;
-		cout << endl << ++outCounter << ": " << hex << x << " " << d << endl; // input data
+//		cout << endl << ++outCounter << ": " << hex << x << " " << d << endl; // input data
 
 		uint64_t mx = x & 0x007FFFFF;
 		uint64_t md = d & 0x007FFFFF;
 //		res = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(d, x, dummy), dummy), dummy);
 		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
-		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
-		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // correct
+		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 2; // 1
+//		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // correct
 
 		mtmp >>= (etmp == 125);
-		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
+//		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
+		mtmp -= 0x8000'0000'0000 * (etmp == 125);
 		etmp += (etmp == 125);
-		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp; // 2 - dx; md = ...
+		mtmp = 0x2'0000'0000'0000 * (etmp == 126) + 0x1'0000'0000'0000 - mtmp; // 2 - dx; md = ...
+//		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp;
 //		md = mtmp; //
-		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // correct
+//		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // correct
 
 //		cout << endl << hex << etmp << " " << mtmp << endl; //
 		
 		// x * tmp left
 
-		// x is 24 bit len, tmp is 49 bit len (including leading bit)
-		// the x*tmp result is 73 bit len, should be reduced to 24 bit - 9 bit longes than 64
-		// the idea is to multiply x as 39 bit len number, x*tmp result is 39+49 = 88 bit, that is 24 bit longer than 64
+		// x is 24 bit len, tmp is 48 bit len (including leading bit) (49)
+		// the x*tmp result is 72 bit len, should be reduced to 24 bit - 8 bit longes than 64 (9)
+		// the idea is to multiply x as 40 bit len number, x*tmp result is 48+40 = 88 bit, that is 24 bit longer than 64 (39)
 		// the result is close enough to 1.0, that's why it cannot be 2.0 after rounding - 1 if can be used
 		// that's a lie! you should make an if to the exponent!
-		// x <<= 39 - 24 = 15
+		// x <<= 40 - 24 = 16 (39 - 24 = 15)
 		
-		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
+		if (mtmp < 0x1'0000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000) (0x8000'0000'0000)
 			etmp -= 1;
-//			mtmp <<= 1;
+			mtmp <<= 1; //
 		}
-		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
+		if (mtmp >= 0x2'0000'0000'0000) { // mres is greater than 2^24; without if (0x1'0000'0000'0000)
 			etmp += 1;
-//			mtmp >>= 1;
+			mtmp >>= 1; //
 		}
 		
 		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
-		cout << ++outCounter << ": " << etmp << endl; // correct
+//		cout << ++outCounter << ": " << etmp << endl; // correct
 
-		// mx * mtmp = (x1*2^32 + y1)*(x2*2^32 + y2) = x1x2*2^64 + y1y2 + x1y2*2^32 + y1x2*2^32 = mx*2^64 + md// idea is mul 50 bit * 50 bit
-		// increasing x up to 39 bit len
+		// mx * mtmp = (x1*2^32 + y1)*(x2*2^32 + y2) = x1x2*2^64 + y1y2 + x1y2*2^32 + y1x2*2^32 = mx*2^64 + md
+		// increasing x up to 40 bit len
 		mx += 0x0080'0000;
-		mx <<= 15;
-		cout << ++outCounter << ": " << mx << endl; //
+		mx <<= 16; // 17
+//		cout << ++outCounter << ": " << mx << endl; //
 
 		// counting using 2^52 mod
 		uint64_t x1 = mx >> 26, y1 = mx & 0x3FF'FFFF, x2 = mtmp >> 26, y2 = mtmp & 0x3FF'FFFF;
@@ -447,24 +449,24 @@ public:
 		md = y1 * y2 + ((x1 * y2) & 0x3FF'FFFF) + ((y1 * x2) & 0x3FF'FFFF); // lover half
 		mx = x1 * x2 + ((x1 * y2) >> 26) + ((y1 * x2) >> 26) + (md >> 52); // upper half, + md / 2^52
 		md &= 0x000F'FFFF'FFFF'FFFF; // % 2^52, lover half
-		cout << ++outCounter << ": " << mx << " " << md << endl; // error is here i think
+//		cout << ++outCounter << ": " << mx << " " << md << endl; // error is here i think
 
 		// translation into 2^64 mod
 		res = mx >> 12; // res = mx / 2^12
 		md += ((mx & 0x0FFF) << 52); // md = mx + mx & 2^12 (mx = mx'*2^52) I DONT LIKE THIS LINE
-		cout << ++outCounter << ": " << res << " " << md << endl;
+//		cout << ++outCounter << ": " << res << " " << md << endl;
 
 		// rounding
 		res += (md > 0x8000'0000'0000'0000) + (md == 0x8000'0000'0000'0000) * ((res & 0x1) == 0x1);
-		etmp += (res >= 0x100'0000);
+		etmp += (res >= 0x100'0000) << 23;
 		res >>= (res >= 0x100'0000);
-		cout << ++outCounter << ": " << res << endl;
+//		cout << ++outCounter << ": " << res << endl;
 
 		// making result
 		
 		res = etmp + res - 0x0080'0000; // -?
 //		res = etmp + res;
-		cout << ++outCounter << ": " << res << endl;
+ //		cout << ++outCounter << ": " << res << endl;
 		
 
 //		cout << etmp << " " << mtmp << endl; //
@@ -486,28 +488,34 @@ public:
 	static uint32_t newton_iter2(uint32_t x, uint32_t d) {
 		uint32_t res;
 		int outCounter = 0;
-		cout << endl << ++outCounter << ": " << hex << x << " " << d << endl; // input data
+		bool printflag = false;
+		int shift;
+		uint64_t shifted;
+		if (printflag) cout << endl << ++outCounter << ": " << hex << x << " " << d << endl; // input data
 
 		uint64_t mx = x & 0x007FFFFF;
 		uint64_t md = d & 0x007FFFFF;
 		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
 		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
-//		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; //
+		if (printflag) cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; //
 
 		mtmp >>= (etmp == 125);
 		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
 		etmp += (etmp == 125);
 		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp; //  24 extra bit, 24 usual bit
 
-		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // 
+		if (printflag) cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // 
 
+		shift = 8;
 		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
 			etmp -= 1;
+//			--shift;
 			mtmp <<= 1; //
 		}
 		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
 			etmp += 1; 
-			mtmp >>= 1; //
+//			++shift;
+			mtmp >>= 1; // bad
 		}
 		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
 
@@ -515,20 +523,25 @@ public:
 
 //		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
 //		mtmp = (mtmp >> 9) + ((mtmp & 0x01FF) > 0x0100) + ((mtmp & 0x03FF) == 0x0300);
-		mtmp = (mtmp >> 8) + ((mtmp & 0x00FF) > 0x0080) + ((mtmp & 0x01FF) == 0x0100); // this one
+		mtmp = (mtmp >> 8) + ((mtmp & 0x00FF) > 0x0080) + ((mtmp & 0x01FF) == 0x0180); // this one
+//		return res + (mres >> (23 - eres + 1)) + ((mres & (shift - 1)) > (shift >> 1)) + (((mres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+//		shifted = 1ull << shift;
+//		mtmp = (mtmp >> shift) + ((mtmp & (shifted - 1)) > (shifted >> 1)) + (((mtmp & ((shifted << 1) - 1))) == (shifted + (shifted >> 1)));
 //		mtmp = (mtmp >> 7) + ((mtmp & 0x007F) > 0x0040) + ((mtmp & 0x00FF) == 0x0080);
-		cout << ++outCounter << ": " << mtmp << endl; //
+		if (printflag) cout << ++outCounter << ": " << mtmp << " " << mx << endl; //
 
 		mtmp = mtmp * mx;
-		cout << ++outCounter << ": " << mtmp << endl; //
+		if (printflag) cout << ++outCounter << ": " << mtmp << endl; //
 
-		res = (mtmp >> 40) + ((mtmp & 0xFF'FFFF'FFFF) > 0x80'0000'0000) + ((mtmp & 0x1FF'FFFF'FFFF) == 0x180'0000'0000);
-//		res = (mtmp >> 39) + ((mtmp & 0x07F'FFFF'FFFF) > 0x40'0000'0000) + ((mtmp & 0x0FF'FFFF'FFFF) == 0x80'0000'0000);
-		cout << ++outCounter << ": " << res << endl; //
+//		res = (mtmp >> 40) + ((mtmp & 0xFF'FFFF'FFFF) > 0x80'0000'0000) + ((mtmp & 0x1FF'FFFF'FFFF) == 0x180'0000'0000);
+		res = (mtmp >> 39) + ((mtmp & 0x7F'FFFF'FFFF) > 0x40'0000'0000) + ((mtmp & 0x0FF'FFFF'FFFF) == 0x0C0'0000'0000);
+		if (printflag) cout << ++outCounter << ": " << res << endl; //
+		// overflow
+		etmp += ((res >= 0x100'0000) << 23);
+		res >>= (res >= 0x100'0000);
 		res = etmp + res - 0x0080'0000;
-//		res = etmp + res;
 
-		cout << ++outCounter << ": " << res << endl; //
+		if (printflag) cout << ++outCounter << ": " << res << endl; //
 		return res;
 		
 	}
@@ -627,8 +640,9 @@ public:
 
 		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
-		x = newton_iter2(x, r); // x = x * (2 - r*x)
-		x = newton_iter2(x, r); // ? нужна 4ая итерация? fma needed
+//		cout << FP32::mul3(x, r, dummy) << endl;
+		if (FP32::mul3(x, r, dummy) != 0x3f800000) x = newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations?
+//		x = newton_iter2(x, r); // ? нужна 4ая итерация? fma needed
 //		x = newton_iter(x, r);
 //		x = newton_iter(x, r);
 //		x = newton_iter(x, r);
@@ -653,6 +667,8 @@ public:
 //		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
 //		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy); //
 //		cout << hex << "r^-1 " << x << endl;
+
+
 
 		if (eres >= 255) 
 			return res + 0x7F800000;
@@ -798,10 +814,10 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 4;
+		size_t from = 6;
 
-		vector<uint32_t> vl = {0x800000, 0x800000, 0x811000, 0x811000};
-		vector<uint32_t> vr = {0x800000, 0xf81000, 0x511d000, 0x520b000};
+		vector<uint32_t> vl = {0x800000, 0x800000, 0x811000, 0x811000, 0xaec000, 0xb85000};
+		vector<uint32_t> vr = {0x800000, 0xf81000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000};
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
@@ -819,14 +835,14 @@ class Alltests {
 			return;
 		}
 
-		for (lc = 0x00800000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528 69632 0x11000
-			for (rc = 0x00800000; rc <= 0xFFFFFFFF; rc += 69632) {
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
 //				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				res = FP32::div(uint32_t(lc), uint32_t(rc), f);
-				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-//				if (f == f && res != FP32(f).data) {
+//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+				if (f == f && res != FP32(f).data) {
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
