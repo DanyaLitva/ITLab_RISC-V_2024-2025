@@ -497,31 +497,36 @@ public:
 		mtmp >>= (etmp == 125);
 		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
 		etmp += (etmp == 125);
-		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp;
+		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp; //  24 extra bit, 24 usual bit
 
 		cout << ++outCounter << ": " <<  mtmp << " " << etmp << endl; // 
 
 		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
 			etmp -= 1;
+			mtmp <<= 1; //
 		}
 		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
-			etmp += 1;
+			etmp += 1; 
+			mtmp >>= 1; //
 		}
 		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
 
 		mx += 0x0080'0000; // mx is 24 bit long, etmp should be 40 bit long
 
 //		mtmp = (mtmp >> 24) + ((mtmp & 0xFF'FFFF) > 0x80'0000) + ((mtmp & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
-		mtmp = (mtmp >> 9) + ((mtmp & 0x01FF) > 0x0100) + ((mtmp & 0x03FF) == 0x0300);
+//		mtmp = (mtmp >> 9) + ((mtmp & 0x01FF) > 0x0100) + ((mtmp & 0x03FF) == 0x0300);
+		mtmp = (mtmp >> 8) + ((mtmp & 0x00FF) > 0x0080) + ((mtmp & 0x01FF) == 0x0100); // this one
+//		mtmp = (mtmp >> 7) + ((mtmp & 0x007F) > 0x0040) + ((mtmp & 0x00FF) == 0x0080);
 		cout << ++outCounter << ": " << mtmp << endl; //
 
 		mtmp = mtmp * mx;
 		cout << ++outCounter << ": " << mtmp << endl; //
 
 		res = (mtmp >> 40) + ((mtmp & 0xFF'FFFF'FFFF) > 0x80'0000'0000) + ((mtmp & 0x1FF'FFFF'FFFF) == 0x180'0000'0000);
+//		res = (mtmp >> 39) + ((mtmp & 0x07F'FFFF'FFFF) > 0x40'0000'0000) + ((mtmp & 0x0FF'FFFF'FFFF) == 0x80'0000'0000);
 		cout << ++outCounter << ": " << res << endl; //
-//		res = etmp + res - 0x0080'0000;
-		res = etmp + res;
+		res = etmp + res - 0x0080'0000;
+//		res = etmp + res;
 
 		cout << ++outCounter << ": " << res << endl; //
 		return res;
