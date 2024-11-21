@@ -546,6 +546,47 @@ public:
 		
 	}
 
+	static uint32_t special_newton_iter2(uint32_t x, uint32_t d) {
+		uint32_t res;
+
+		uint64_t mx = x & 0x007FFFFF;
+		uint64_t md = d & 0x007FFFFF;
+		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
+		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
+		// check on mtmp == 0
+		if ((mtmp >> 24) == 0x0 || (mtmp >> 24) == 0x80'0000) return x;
+
+		mtmp >>= (etmp == 125);
+		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
+		etmp += (etmp == 125);
+		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp; //  24 extra bit, 24 usual bit
+
+		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
+			etmp -= 1;
+			mtmp <<= 1; //
+		}
+		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
+			etmp += 1;
+			mtmp >>= 1; // bad
+		}
+		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
+
+		mx += 0x0080'0000; // mx is 24 bit long, etmp should be 40 bit long
+		mtmp = (mtmp >> 8) + ((mtmp & 0x00FF) > 0x0080) + ((mtmp & 0x01FF) == 0x0180); // this one
+
+
+		mtmp = mtmp * mx;
+
+		res = (mtmp >> 39) + ((mtmp & 0x7F'FFFF'FFFF) > 0x40'0000'0000) + ((mtmp & 0x0FF'FFFF'FFFF) == 0x0C0'0000'0000);
+		// make binary +- 1 to mantissa
+		// overflow
+		etmp += ((res >= 0x100'0000) << 23);
+		res >>= (res >= 0x100'0000);
+		res = etmp + res - 0x0080'0000;
+		return res;
+
+	}
+
 	static uint32_t div(uint32_t l, uint32_t r, float& example) noexcept {
 		float dummy; //
 		example = float(FP32(l)) / float(FP32(r)); //
@@ -641,7 +682,10 @@ public:
 		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
 //		cout << FP32::mul3(x, r, dummy) << endl;
-		if (FP32::mul3(x, r, dummy) != 0x3f800000) x = newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations?
+		x = special_newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter
+//		cout << hex << FP32::mul3(x, r, dummy) << endl;
+//		if (FP32::mul3(x, r, dummy) < 0x3f800000ul) --x;
+//		else if (FP32::mul3(x, r, dummy) > 0x3f800000ul) ++x;
 //		x = newton_iter2(x, r); // ? нужна 4ая итерация? fma needed
 //		x = newton_iter(x, r);
 //		x = newton_iter(x, r);
@@ -957,7 +1001,8 @@ int main() {
 	//if (flag) flag = tests.run();
 	tests.run2();
 	cout << endl << "ENDED" << endl;
-
+//	cout << hex << 0xa5effull * 0x6cd000ull + (0xa5effull << 23) + (0x6cd000ull << 23) << endl;
+//	cout << hex << 0x8a5effull * 0xecd000ull << endl;
 
 	//int a = -100;
 	//cout << a << endl;
