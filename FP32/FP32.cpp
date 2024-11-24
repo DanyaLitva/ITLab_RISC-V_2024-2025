@@ -728,6 +728,8 @@ public:
 		else 
 			return res;
 
+//		if (FP32::mul3(x, res, dummy) < l) ++res;
+
 		return res;
 	}
 
@@ -860,8 +862,8 @@ class Alltests {
 		float f;
 		size_t from = 6;
 
-		vector<uint32_t> vl = {0x800000, 0x800000, 0x811000, 0x811000, 0xaec000, 0xb85000};
-		vector<uint32_t> vr = {0x800000, 0xf81000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000};
+		vector<uint32_t> vl = {0x800000, 0x800000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800 };
+		vector<uint32_t> vr = {0x800000, 0xf81000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe};
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
