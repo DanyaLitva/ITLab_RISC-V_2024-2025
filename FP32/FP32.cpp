@@ -584,7 +584,6 @@ public:
 		res >>= (res >= 0x100'0000);
 		res = etmp + res - 0x0080'0000;
 		return res;
-
 	}
 
 	static uint32_t div(uint32_t l, uint32_t r, float& example) noexcept {
@@ -679,10 +678,11 @@ public:
 		x = tmp;
 //		x = FP32::add3(x, FP32::mul3(x, t, dummy), dummy); // x += x * t // -t? */
 
+		// but it is possible than there will be an answer on 1st or 2nd iteration. Make a check on each one!
 		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
 //		cout << FP32::mul3(x, r, dummy) << endl;
-		x = special_newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter
+		x = special_newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
 //		cout << hex << FP32::mul3(x, r, dummy) << endl;
 //		if (FP32::mul3(x, r, dummy) < 0x3f800000ul) --x;
 //		else if (FP32::mul3(x, r, dummy) > 0x3f800000ul) ++x;
@@ -879,21 +879,21 @@ class Alltests {
 			return;
 		}
 
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 6528) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 6963) {
 //				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				res = FP32::div(uint32_t(lc), uint32_t(rc), f);
-//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-				if (f == f && res != FP32(f).data) {
+				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+//				if (f == f && res != FP32(f).data) {
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
 					cout << endl << "Continue? 1 - yes, 0 - no\n";
-					cin >> input;
-					//input = 1;
+//					cin >> input;
+					input = 1;
 					if (input) continue;
 					return;
 				}
