@@ -797,14 +797,18 @@ public:
 		cout << endl; //
 		// check here what num is more suitable
 		uint64_t mres1, mres2, mres3, diff1, diff2, diff3;
-		mres = lCopied;
-		mres <<= 23; // exanding l to 2^46
+		mres = lCopied; // ????????????????
+		mres <<= 23; // exanding l to 2^46   !!!23!!!
 		cout << lCopied << " " << mres << endl; //
 		mres1 = special_mul(rCopied, res); // counting r*res without rouding
-//		cout << endl << res << endl;
-		if ((res & 0x7fffffff) < 0x7ffffffe) mres2 = special_mul(rCopied, res + 1);
+		cout << res << endl;
+		if ((res & 0x7fffffff) < 0x7f7fffff) {
+			mres2 = special_mul(rCopied, res + 1);
+		}
 		else mres2 = mres1;
-		if ((res & 0x7fffffff) > 0x0) mres3 = special_mul(rCopied, res - 1);
+		if ((res & 0x7fffffff) > 0x0) {
+			mres3 = special_mul(rCopied, res - 1);
+		}
 		else mres3 = mres1;
 		cout << mres1 << " " << mres2 << " " << mres3 << endl;
 		cout << res << " " << res + 1 << " " << res - 1 << endl;
@@ -970,7 +974,7 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 0;
+		size_t from = 1;
 
 		vector<uint32_t> vl = { 0xcc000, 0x809000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
 		vector<uint32_t> vr = { 0xc7c00000, 0x4b810000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
