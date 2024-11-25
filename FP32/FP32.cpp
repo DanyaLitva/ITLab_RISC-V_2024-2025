@@ -596,6 +596,14 @@ public:
 		uint64_t mr = r & 0x007FFFFF;
 		uint64_t mres;
 
+		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
+			if (ml != 0 && el == 0x7F800000) // if left is nan
+				return res + (l & 0x7FFFFFFF);
+			else if (er == 0x7F800000) // if right is inf or nan
+				return res + (r & 0x7FFFFFFF);
+			return res + (l & 0x7FFFFFFF);
+		}
+
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
 		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
 
@@ -786,17 +794,20 @@ public:
 //			res = 0;
 
 //		cout << FP32::mul3(rCopied, res, dummy) << endl; //
-//		cout << endl;
+		cout << endl; //
 		// check here what num is more suitable
 		uint64_t mres1, mres2, mres3, diff1, diff2, diff3;
 		mres = lCopied;
 		mres <<= 23; // exanding l to 2^46
-//		cout << lCopied << " " << mres << endl; //
+		cout << lCopied << " " << mres << endl; //
 		mres1 = special_mul(rCopied, res); // counting r*res without rouding
-		mres2 = special_mul(rCopied, res + 1);
-		mres3 = special_mul(rCopied, res - 1);
-//		cout << mres1 << " " << mres2 << " " << mres3 << endl;
-//		cout << res << " " << res + 1 << " " << res - 1 << endl;
+//		cout << endl << res << endl;
+		if ((res & 0x7fffffff) < 0x7ffffffe) mres2 = special_mul(rCopied, res + 1);
+		else mres2 = mres1;
+		if ((res & 0x7fffffff) > 0x0) mres3 = special_mul(rCopied, res - 1);
+		else mres3 = mres1;
+		cout << mres1 << " " << mres2 << " " << mres3 << endl;
+		cout << res << " " << res + 1 << " " << res - 1 << endl;
 //		if ((mres1 & 0x3F'FFFF'FFFF'FFFF) == 0 || (mres1 & 0x3F'FFFF'FFFF'FFFF) == 0x3F'C000'0000'0000) diff1 = 0xFFFF'FFFF'FFFF'FFFF;
 		if (mres > mres1) diff1 = mres - mres1; // else
 		else diff1 = mres1 - mres;
@@ -809,8 +820,16 @@ public:
 
 		cout << diff1 << " " << diff2 << " " << diff3 << endl;
 
-		if (diff1 < diff2) {
+		if (diff1 == diff2) {
+			if (res % 2 == 0) return res;
+			else return res + 1;
+		}
+		else if (diff1 < diff2) {
 			if (diff3 < diff1) return res - 1;
+			else if (diff3 == diff1) {
+				if (res % 2 == 0) return res;
+				else return res - 1;
+			}
 			else return res;
 		}
 		else if (diff2 < diff1) {
@@ -953,8 +972,8 @@ class Alltests {
 		float f;
 		size_t from = 0;
 
-		vector<uint32_t> vl = { 0xcc000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0xc7c00000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0xcc000, 0x809000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0xc7c00000, 0x4b810000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
