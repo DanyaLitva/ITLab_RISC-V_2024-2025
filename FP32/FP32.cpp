@@ -201,15 +201,11 @@ public:
 
 		if (el == 0xFF || er == 0xFF) { // nan and inf checking
 			if (el == 0xFF) {
-				if (ml != 0)
-					return l;
+				if (ml != 0) return l;
 				if (er == 0xFF) {
-					if (mr != 0)
-						return r;
-					if ((l ^ r) == 0x80000000)
-						return r + 1;
-					else
-						return r;
+					if (mr != 0) return r;
+					if ((l ^ r) == 0x80000000) return r + 1;
+					else return r;
 				}
 				return l;
 			}
@@ -588,7 +584,116 @@ public:
 	}
 
 	static uint32_t fma3(uint32_t a, uint32_t b, uint32_t c, float& example) { // a*b + c;
-		uint32_t res = 0;
+		example = std::fmaf(float(FP32(a)), float(FP32(b)), float(FP32(c))); //
+		uint32_t res = (a ^ b) & 0x80000000;
+		uint32_t ea = a & 0x7F800000;
+		uint32_t eb = b & 0x7F800000;
+		uint32_t ec = c & 0x7F800000;
+		int32_t eres;
+		uint64_t ma = a & 0x007FFFFF;
+		uint64_t mb = b & 0x007FFFFF;
+		int64_t mc = c & 0x007FFFFF;
+		int64_t mres;
+
+		if ((ea == 0x7F800000) || (eb == 0x7F800000)) { // nan and inf checking for mul
+			if (ma != 0 && eb == 0x7F800000) // if left is nan
+				return res + (a & 0x7FFFFFFF);
+			else if (eb == 0x7F800000) // if right is inf or nan
+				return res + (b & 0x7FFFFFFF);
+			return res + (a & 0x7FFFFFFF);
+		}
+		if (ec == 0x7F800000) { // inf - inf error(((
+			if (mc != 0) return c;
+			else return c; // inf - inf
+		}
+
+		eres = ((ea + eb) >> 23) - 127 + (ea == 0) + (eb == 0); // calculating exponent
+		mres = ((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0))) << 1; // calculating 24 bit extended mantissa
+		mc <<= 24;
+		mres *= -(2 * int32_t(res >> 31) - 1);
+		mc *= -(2 * int32_t(c >> 31) - 1);
+		eb = eres;
+		if (eres > ec) { // calulate exponent and mantissa making exponents equal each other
+			ec += (ec == 0);
+			eres = eb;
+			if (eb - ec >= 64) mres = mres;
+			else mres = mres + (mc >> (eb - ec)); // addition
+		}
+		else {
+			ec += (ec == 0);
+			eb += (eb == 0);
+			eres = ec;
+			if (ec - eb >= 64) mres = mc;
+			else mres = mc + (mres >> (ec - eb)); // addition
+		}
+		res = 0x80000000 * (mres < 0); // abs of mres, creating res sign
+		mres *= -(2 * (mres < 0) - 1);
+
+		while ((mres < 0x8000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^24. Can it be speeded up?
+			eres -= 1;
+			mres <<= (eres > 0); // just 1?
+		}
+		while (mres >= 0x1'0000'0000'0000) { // mres is greater than 2^24 (2^?). Can it be speeded up?
+			eres += 1;
+			mres >>= (eres > 0); // just 1?
+		}
+
+		
+		if (eres > 0) { // if normal
+			mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 23 bit stored 
+			if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
+				eres += 1;
+				mres >>= 1;
+			}
+			if (eres >= 0xFF) { // if infinity
+				return res | 0x7F800000;
+			}
+			else {
+				return res + uint32_t(mres) - 0x00800000 + (eres << 23); // calculating result
+			}
+		}
+		else if (eres >= -23) { // if subnormal
+			uint64_t shift = 1ull << (23 - eres + 1); 
+
+			return res + (mres >> (23 - eres + 1)) + 
+			( (mres & (shift - 1) ) > (shift >> 1) ) + 
+			( ( (mres & ( (shift << 1) - 1) ) ) == (shift + (shift >> 1) ) );
+		}
+		
+		/*
+		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
+		if (mres >= 0x01000000) { // mres is greater than 2^23
+			mres >>= (eres > 0); // subnormals
+			++eres;
+		}
+
+		if (eres >= 0xFF) { // in inf
+			return res + 0x7F800000;
+		}
+		res += eres << 23; // calcuating result
+		if (eres > 0)
+			return res + mres - 0x00800000;
+		else
+			return res + mres;
+
+		return res;
+		*/
+		/* 
+		if (el == 0xFF || er == 0xFF) { // nan and inf checking for add
+			if (el == 0xFF) {
+				if (ml != 0) return l;
+				if (er == 0xFF) {
+					if (mr != 0) return r;
+					if ((l ^ r) == 0x80000000) return r + 1;
+					else return r;
+				}
+				return l;
+			}
+			else
+				return r;
+		}
+		*/
+
 		return res;
 	}
 
@@ -782,11 +887,11 @@ public:
 		else if (eres > 0) {
 			l = (eres << 23) + ml;
 
-			uint32_t y = FP32::mul3(l, x, dummy);
-			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy);
+			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
+			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); // d = l - r*y = l - r*l*1/r
 //			cout << hex << d << " " << y << endl;
-			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy);
-//			cout << y << endl;
+			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy); // y = y + d*x = y + d*1/a
+//			cout << y << endl; 
 
 //			res += FP32::mul3(l, x, dummy); // + 0x80'0000; // l * r mantissa
 			res += y;
@@ -1018,14 +1123,16 @@ class Alltests {
 			return;
 		}
 
-		cout << "Add\n";
+//		cout << "Add\n";
 
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 5417) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 5852) {
-				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
+	for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 69632)
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
+//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::div(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
 //				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
 				if (f == f && res != FP32(f).data) {
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
@@ -1033,14 +1140,14 @@ class Alltests {
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
 					cout << endl << "Continue? 1 - yes, 0 - no\n";
-//					cin >> input;
-					input = 1;
+					cin >> input;
+//					input = 1;
 					if (input) continue;
 					return;
 				}
 			}
 		}		
-
+		/*
 		cout << "Sub\n";
 
 		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 5417) { // 6528 69632 0x11000
@@ -1085,7 +1192,7 @@ class Alltests {
 					return;
 				}
 			}
-		}
+		} */
 	}
 };
 
