@@ -383,7 +383,7 @@ FP16 FP16::AddFP16_N_N(FP16 N1, FP16 N2) {
     }
     return Res;
 }
-
+//  в сложении учитывать последние биты разницы, если мантиссы не пересекаются, то они могут повлиять на округление мантиссы, (53 - diff  для дабблов)
 //
 FP16 FP16::AddFP16_N_S(FP16 N1, FP16 N2) {
     FP16 A, B, Res;
@@ -592,10 +592,10 @@ void Test_Sub();
 
 using namespace std;
 int main() {
-    //Test_Mult();
+    //Test_Sub();
 
-    float f1 = 1;
-    float f2 = 0.235962;
+    float f1 = -5.812500000000000;
+    float f2 = 3.986328125000000;
     
     FP16 A(f1);
     FP16 B(f2);
@@ -736,7 +736,9 @@ void Test_Sub() {
                             FP16 A(sign1, exp1, man1);
                             FP16 B(sign2, exp2, man2);
                             if (((A - B).GetFloat() - (A.GetFloat() - B.GetFloat())) > ((A - B).GetLastBit())) {
-                                cout << A.GetFloat() << " - A\t" << B.GetFloat() << " - B" << endl;
+                                printf("%.15f - A\t", A.GetFloat());
+                                printf("%.15f - B\n", B.GetFloat());
+                                //cout << A.GetFloat() << " - A\t" << B.GetFloat() << " - B" << endl;
                                 cout << (A - B).GetFloat() << " - my\t" << (A.GetFloat() - B.GetFloat()) << " - need" << endl;
                                 (A - B).PrintFP16_ed();
                                 cout << " - my" << endl;
