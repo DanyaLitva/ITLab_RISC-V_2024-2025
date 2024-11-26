@@ -587,6 +587,14 @@ public:
 		return res;
 	}
 
+	static uint32_t fma3(uint32_t a, uint32_t b, uint32_t c) { // a*b + c;
+
+	}
+
+	static uint32_t usub(uint32_t a) {
+		return (a & 0x7FFF'FFFF) + (~a & 0x8000'0000);
+	}
+
 	static uint64_t special_mul(uint32_t r, uint32_t l) {
 		uint64_t res = (l ^ r) & 0x80000000;
 		uint64_t el = l & 0x7F800000;
@@ -766,52 +774,65 @@ public:
 //		cout << hex << "r^-1 " << x << endl;
 
 //		++x; //
+//		cout << dec << eres << hex << endl;
 
 		if (eres >= 255) 
 			return res + 0x7F800000;
 		else if (eres > 0) {
 			l = (eres << 23) + ml;
 
-//			uint32_t y = FP32::mul3(l, x, dummy);
-//			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy);
-//			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy);
+			uint32_t y = FP32::mul3(l, x, dummy);
+			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy);
+			cout << hex << d << " " << y << endl;
+			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy);
+			cout << y << endl;
 
-			res += FP32::mul3(l, x, dummy); // + 0x80'0000; // l * r mantissa
-//			res += y;
+//			res += FP32::mul3(l, x, dummy); // + 0x80'0000; // l * r mantissa
+			res += y;
 		}
 		else if (eres >= -23) {
 			l = ml + 0x80'0000;
-			x -= (-eres + 1) << 23;
+			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1)
 
-//			uint32_t y = FP32::mul3(l, x, dummy);
-//			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy);
-//			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy);
+			uint32_t y = FP32::mul3(l, x, dummy);
+			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); 
+			cout << hex << d << " " << y << endl;
+			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy);
+			cout << y << endl;
 
-			res += FP32::mul3(l, x, dummy);
-//			res += y;
+//			res += FP32::mul3(l, x, dummy);
+			res += y;
 		}
-//		else 
-//			res = 0;
+//		else if (eres >= -24)
+//			res += 1; // ?????
+//			return res;
+		else 
+			return res;
+
+		return res;
 
 //		cout << FP32::mul3(rCopied, res, dummy) << endl; //
-		cout << endl; //
+//		cout << endl; //
 		// check here what num is more suitable
+		/*
 		uint64_t mres1, mres2, mres3, diff1, diff2, diff3;
 		mres = lCopied; // ????????????????
 		mres <<= 23; // exanding l to 2^46   !!!23!!!
-		cout << lCopied << " " << mres << endl; //
+//		cout << lCopied << " " << mres << endl; //
 		mres1 = special_mul(rCopied, res); // counting r*res without rouding
-		cout << res << endl;
+//		if ((res & 0x7fffffff) == 0x0) mres1 += 0x400000000000; // ??
+//		cout << res << endl;
 		if ((res & 0x7fffffff) < 0x7f7fffff) {
 			mres2 = special_mul(rCopied, res + 1);
 		}
 		else mres2 = mres1;
 		if ((res & 0x7fffffff) > 0x0) {
 			mres3 = special_mul(rCopied, res - 1);
+//			if ((res & 0x7fffffff) == 0x1) mres3 += 0x400000000000; // ??
 		}
 		else mres3 = mres1;
-		cout << mres1 << " " << mres2 << " " << mres3 << endl;
-		cout << res << " " << res + 1 << " " << res - 1 << endl;
+//		cout << mres1 << " " << mres2 << " " << mres3 << endl;
+//		cout << res << " " << res + 1 << " " << res - 1 << endl;
 //		if ((mres1 & 0x3F'FFFF'FFFF'FFFF) == 0 || (mres1 & 0x3F'FFFF'FFFF'FFFF) == 0x3F'C000'0000'0000) diff1 = 0xFFFF'FFFF'FFFF'FFFF;
 		if (mres > mres1) diff1 = mres - mres1; // else
 		else diff1 = mres1 - mres;
@@ -822,7 +843,7 @@ public:
 		if (mres > mres3) diff3 = mres - mres3; // else
 		else diff3 = mres3 - mres;
 
-		cout << diff1 << " " << diff2 << " " << diff3 << endl;
+//		cout << diff1 << " " << diff2 << " " << diff3 << endl;
 
 		if (diff1 == diff2) {
 			if (res % 2 == 0) return res;
@@ -840,6 +861,7 @@ public:
 			if (diff3 < diff2) return res - 1;
 			else return res + 1;
 		}
+		*/
 
 
 //		if (FP32::mul3(rCopied, res, dummy) < l) ++res; // bad
@@ -974,10 +996,10 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 1;
+		size_t from = 2;
 
-		vector<uint32_t> vl = { 0xcc000, 0x809000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0xc7c00000, 0x4b810000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0xcc000, 0x809000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0xc7c00000, 0x4b810000, 0x231000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
