@@ -584,17 +584,22 @@ public:
 	}
 
 	static uint32_t fma3(uint32_t a, uint32_t b, uint32_t c, float& example) { // a*b + c;
+		float dummy; //
+		bool coutflag = true; //
+		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
+		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
 		example = std::fmaf(float(FP32(a)), float(FP32(b)), float(FP32(c))); //
 		uint32_t res = (a ^ b) & 0x80000000;
-		uint32_t ea = a & 0x7F800000;
-		uint32_t eb = b & 0x7F800000;
-		uint32_t ec = c & 0x7F800000;
+		int32_t ea = a & 0x7F800000;
+		int32_t eb = b & 0x7F800000;
+		int32_t ec = c & 0x7F800000;
 		int32_t eres;
 		uint64_t ma = a & 0x007FFFFF;
 		uint64_t mb = b & 0x007FFFFF;
 		int64_t mc = c & 0x007FFFFF;
 		int64_t mres;
 
+		// NAN AND INF
 		if ((ea == 0x7F800000) || (eb == 0x7F800000)) { // nan and inf checking for mul
 			if (ma != 0 && eb == 0x7F800000) // if left is nan
 				return res + (a & 0x7FFFFFFF);
@@ -607,58 +612,105 @@ public:
 			else return c; // inf - inf
 		}
 
-		eres = ((ea + eb) >> 23) - 127 + (ea == 0) + (eb == 0); // calculating exponent
-		mres = ((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0))) << 1; // calculating 24 bit extended mantissa
-		mc <<= 24;
-		mres *= -(2 * int32_t(res >> 31) - 1);
-		mc *= -(2 * int32_t(c >> 31) - 1);
-		eb = eres;
-		if (eres > ec) { // calulate exponent and mantissa making exponents equal each other
-			ec += (ec == 0);
-			eres = eb;
-			if (eb - ec >= 64) mres = mres;
-			else mres = mres + (mc >> (eb - ec)); // addition
-		}
-		else {
-			ec += (ec == 0);
-			eb += (eb == 0);
-			eres = ec;
-			if (ec - eb >= 64) mres = mc;
-			else mres = mc + (mres >> (ec - eb)); // addition
-		}
-		res = 0x80000000 * (mres < 0); // abs of mres, creating res sign
-		mres *= -(2 * (mres < 0) - 1);
+		// MULTIPLYING
+		eres = ((ea + eb) >> 23) + (ea == 0) + (eb == 0); // calculating exponent NEW!!!
+		eres -= 127;
+		mres = (((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0)))) << 1; // calculating 24 bit extended mantissa
+		if (coutflag) cout << "mres: " << mres << ", eres: " << eres << endl; //
 
-		while ((mres < 0x8000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^24. Can it be speeded up?
+		// MUL RESULT TO NORMAL
+		while ((mres < 0x8000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^24. Can it be speeded up? // >= 0
 			eres -= 1;
-			mres <<= (eres > 0); // just 1?
+			mres <<= 1;
 		}
 		while (mres >= 0x1'0000'0000'0000) { // mres is greater than 2^24 (2^?). Can it be speeded up?
 			eres += 1;
-			mres >>= (eres > 0); // just 1?
+			mres >>= 1; // just 1? (eres > 0)
+		}
+		if (mres >= 0x8000'0000'0000 && eres <= 0) { // new
+			mres >>= 1;
+		}
+		if (coutflag) cout << "mres: " << mres << ", eres: " << eres << ", true: " << FP32::mul3(a, b, dummy) << endl; //
+
+		// ADDING PREPARATIONS
+		mc = (mc + (uint64_t(ec > 0) << 23)) << 24;
+		mres *= -(2 * int32_t(res >> 31) - 1);
+		mc   *= -(2 * int32_t(c   >> 31) - 1);
+		eb = eres;
+		ec >>= 23; // ec > 0??
+		if (coutflag) cout << "mres: " << mres << ", eb: " << eb << endl; //
+		if (coutflag) cout << "mc: " << mc << ", ec: " << ec << endl; //
+
+		// ADDING
+		if (eb > ec) { // calulate exponent and mantissa making exponents equal each other
+//			ec += (ec == 0);
+			eres = eb;
+			if (eb - ec >= 64) mres = mres; // 25
+			else mres = mres + (mc >> (eb - ec));
+		}
+		else {
+//			ec += (ec == 0);
+//			eb += (eb <= 0); // new
+			eres = ec;
+			if (ec - eb >= 64) mres = mc;
+			else mres = mc + (mres >> (ec - eb));
+		}
+		res = 0x80000000 * (mres < 0); // abs of mres, creating res sign
+		mres *= -(2 * (mres < 0) - 1);
+		if (coutflag) cout << "mres: " << mres << ", eb: " << eb << endl; //
+
+		// ADD RES NORMALIZATION
+		if (mres >= 0x1'0000'0000'0000) { // if mres is greater than a 2^23 (2^48) // make a non-if code
+			mres >>= (eres > 0); // subnormals
+			++eres;
+		}
+		else {
+			while (mres < 0x8000'0000'0000 && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+				--eres;
+				mres <<= (eres > 0); // subnormals
+			}
+		}
+		if (coutflag) cout << "mres: " << mres << ", eb: " << eb << endl; //
+
+		// ROUNDING
+		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
+		if (mres >= 0x01000000) { // mres is greater than 2^23 // add this into >= 2^48
+			mres >>= (eres > 0); // subnormals
+			++eres;
 		}
 
-		
-		if (eres > 0) { // if normal
-			mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 23 bit stored 
-			if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
-				eres += 1;
-				mres >>= 1;
-			}
-			if (eres >= 0xFF) { // if infinity
-				return res | 0x7F800000;
-			}
-			else {
-				return res + uint32_t(mres) - 0x00800000 + (eres << 23); // calculating result
-			}
+		if (eres >= 0xFF) { // in inf
+			return res + 0x7F800000;
 		}
-		else if (eres >= -23) { // if subnormal
-			uint64_t shift = 1ull << (23 - eres + 1); 
+		res += eres << 23; // calcuating result
+		if (eres > 0)
+			return res + mres - 0x00800000;
+		else
+			return res + mres;
 
-			return res + (mres >> (23 - eres + 1)) + 
-			( (mres & (shift - 1) ) > (shift >> 1) ) + 
-			( ( (mres & ( (shift << 1) - 1) ) ) == (shift + (shift >> 1) ) );
-		}
+//		return res;
+
+
+		//if (eres > 0) { // if normal
+		//	mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 23 bit stored 
+		//	if (mres >= 0x01000000) { // mres is greater than 2^23 (2^24) // should I?
+		//		eres += 1;
+		//		mres >>= 1;
+		//	}
+		//	if (eres >= 0xFF) { // if infinity
+		//		return res | 0x7F800000;
+		//	}
+		//	else {
+		//		return res + uint32_t(mres) - 0x00800000 + (eres << 23); // calculating result
+		//	}
+		//}
+		//else if (eres >= -23) { // if subnormal
+		//	uint64_t shift = 1ull << (23 - eres + 1); 
+		//
+		//	return res + (mres >> (23 - eres + 1)) + 
+		//	( (mres & (shift - 1) ) > (shift >> 1) ) + 
+		//	( ( (mres & ( (shift << 1) - 1) ) ) == (shift + (shift >> 1) ) );
+		//}
 		
 		/*
 		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
@@ -1102,13 +1154,14 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 3;
+		size_t from = 0;
 
-		vector<uint32_t> vl = { 0xcc000, 0x809000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0xc7c00000, 0x4b810000, 0x231000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
-			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
+//			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
+			res = FP32::fma3(vl[i], vr[i], 0x0, f);
 			if (f == f && res != FP32(f).data) {
 					cout << hex << endl << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
@@ -1135,7 +1188,8 @@ class Alltests {
 				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
 //				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
 				if (f == f && res != FP32(f).data) {
-					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
+					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
+//					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
