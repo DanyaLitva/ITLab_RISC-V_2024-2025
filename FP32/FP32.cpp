@@ -1059,6 +1059,94 @@ public:
 		return res;
 	}
 
+	static uint32_t div2(uint32_t l, uint32_t r, float& example) noexcept {
+//		cout << endl << l << " " << r << endl; //
+		float dummy; //
+		example = float(FP32(l)) / float(FP32(r)); //
+		uint32_t rCopied = r; //
+		uint32_t lCopied = l; //
+		uint32_t res = (l ^ r) & 0x80000000;
+		uint32_t el = l & 0x7F800000;
+		uint32_t er = r & 0x7F800000;
+		int32_t eres = el + 127 - er;
+		uint64_t ml = l & 0x007FFFFF;
+		uint64_t mr = r & 0x007FFFFF;
+		uint64_t mres;
+
+
+		if ((el == 0x7F800000) || (er == 0x7F800000) || (r == 0) || (r == 0x80000000) || (l == 0) || (l == 0x80000000)) { // nan and inf
+			if (el == 0x7F800000) { // left is inf or nan
+				if (ml != 0) // left is nan
+					return res + (l & 0x7FFFFFFF);
+				else if (er == 0x7F800000) // right is inf or nan
+					return res + 0x7F800001; // inf / inf = nan
+				else
+					return res + (l & 0x7FFFFFFF); // inf / finite = inf
+			}
+			if (er == 0x7F800000) { // right is inf or nan
+				if (mr != 0) // is nan
+					return res + (r & 0x7FFFFFFF);
+				else // is inf
+					return res; // zero
+			}
+
+			if ((r == 0) || (r == 0x80000000)) { // right is zero
+				if ((l == 0) || (l == 0x80000000)) // left is zero
+					return res | 0x7F800001;
+				else
+					return res | 0x7F800000;
+			}
+
+			if ((l == 0) || (l == 0x80000000)) {
+				return res;
+			}
+		}
+
+
+		eres = (el >> 23) + 126; // diapason [0.5, 1)
+		if (er == 0) {
+			--eres; // er += 1 if right is subnormal
+			while (mr < 0x80'0000) { // right to normal
+				++eres; // --er
+				mr <<= 1;
+			}
+			mr -= 0x80'0000;
+		}
+		eres -= (er >> 23);
+		if (el == 0) {
+			++eres; // el += 1 if left is subnormal
+			while (ml < 0x80'0000) { // left to normal
+				--eres; // --el
+				ml <<= 1;
+			}
+			ml -= 0x80'0000;
+		}
+		r = mr + (126 << 23); // diapason [0.5, 1)
+
+
+		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
+		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
+		x = newton_iter2(x, r); // x = x * (2 - r*x)
+		x = special_newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
+
+
+		if (eres >= 255)
+			return res + 0x7F800000;
+		else if (eres > 0) {
+			l = (eres << 23) + ml;
+			uint32_t y = FP32::mul3(l, x, dummy);
+			res += y;
+		}
+		else if (eres >= -23) {
+			l = ml + 0x80'0000;
+			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
+			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
+			res += y;
+		}
+
+		return res;
+	}
+
 	FP32& operator+= (const FP32& bf) noexcept {
 		uint16_t sign;
 		if (getsign() && bf.getsign()) sign = 1;
@@ -1186,13 +1274,13 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 4;
+		size_t from = 5;
 
 		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
 		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c009000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
-			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
+			res = FP32::div2(uint32_t(vl[i]), uint32_t(vr[i]), f);
 //			res = FP32::fma3(vl[i], vr[i], 0x0, f);
 			if (f == f && res != FP32(f).data) {
 					cout << hex << endl << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
@@ -1207,7 +1295,6 @@ class Alltests {
 			cout << "\nNOT PASSED\n";
 			return;
 		}
-		return; //
 
 //		cout << "Add\n";
 
@@ -1217,7 +1304,7 @@ class Alltests {
 //				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
-				res = FP32::div(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
 				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
 //				if (f == f && res != FP32(f).data) {
