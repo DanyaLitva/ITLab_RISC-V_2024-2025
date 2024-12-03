@@ -801,7 +801,8 @@ public:
 	}
 
 	static uint32_t div(uint32_t l, uint32_t r, float& example) noexcept {
-//		cout << endl << l << " " << r << endl;
+		uint32_t savedl = l, savedr = r;
+		cout << endl << l << " " << r << endl;
 		float dummy; //
 		example = float(FP32(l)) / float(FP32(r)); //
 		uint32_t rCopied = r; //
@@ -940,48 +941,57 @@ public:
 		else if (eres > 0) {
 			l = (eres << 23) + ml;
 
-			/*
+			cout << l << endl;
 			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
-			cout << y << endl;
+			cout << res + y << endl;
 //			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); // d = l - r*y = l - r*l*1/r
 			r = usub(r);
-			float df = std::fmaf(float(FP32(r)), float(FP32(y)), float(FP32(l)));
+			float df = std::fmaf(float(FP32(savedr)), float(FP32(y)), float(FP32(savedl)));
+			cout << setprecision(10) << df << endl;
+			cout << hex << FP32(df).data << " " << y << " " << l << " " << r << endl;
 			y = FP32(std::fmaf(df, float(FP32(x)), float(FP32(y)))).data;
+			/*
 			df = std::fmaf(float(FP32(r)), float(FP32(y)), float(FP32(l)));
 			y = FP32(std::fmaf(df, float(FP32(x)), float(FP32(y)))).data;
+			*/
 			r = usub(r);
 //			cout << hex << d << " " << y << endl;
 			cout << hex << FP32(df).data << " " << y << endl;
 //			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy); // y = y + d*x = y + d*1/a
 			
 			cout << y << endl; 
-			*/
+			
 
-			res += FP32::mul3(l, x, dummy); // + 0x80'0000; // l * r mantissa
-//			res += y;
+//			res += FP32::mul3(l, x, dummy); // + 0x80'0000; // l * r mantissa
+			res += y;
 		}
 		else if (eres >= -23) {
 			l = ml + 0x80'0000;
-			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1)
+//			l = FP32(float(FP32(l)) / 2.0f).data;
+//			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
 
-			/*
+			cout << x << endl;
 			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
 			cout << y << endl;
 //			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); // d = l - r*y = l - r*l*1/r
 			r = usub(r);
-			float df = std::fmaf(float(FP32(r)), float(FP32(y)), float(FP32(l)));
+			float df = std::fmaf(float(FP32(savedr)), float(FP32(y)), float(FP32(savedl)));
+			cout << setprecision(20) << df << endl;
+			cout << hex << FP32(df).data << " " << float(FP32(y)) << " " << float(FP32(l)) << " " << float(FP32(r)) << endl;
 			y = FP32(std::fmaf(df, float(FP32(x)), float(FP32(y)))).data;
+			/*
 			df = std::fmaf(float(FP32(r)), float(FP32(y)), float(FP32(l)));
 			y = FP32(std::fmaf(df, float(FP32(x)), float(FP32(y)))).data;
+			*/
 			r = usub(r);
 			cout << hex << FP32(df).data << " " << y << endl;
 //			y = FP32::add3(y, FP32::mul3(d, x, dummy), dummy); // y = y + d*x = y + d*1/a
 
 			cout << y << endl; 
-			*/
+			
 
-			res += FP32::mul3(l, x, dummy);
-//			res += y;
+//			res += FP32::mul3(l, x, dummy);
+			res += y;
 		}
 //		else if (eres >= -24)
 //			res += 1; // ?????
@@ -1178,12 +1188,12 @@ class Alltests {
 		float f;
 		size_t from = 4;
 
-		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c009000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
-//			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
-			res = FP32::fma3(vl[i], vr[i], 0x0, f);
+			res = FP32::div(uint32_t(vl[i]), uint32_t(vr[i]), f);
+//			res = FP32::fma3(vl[i], vr[i], 0x0, f);
 			if (f == f && res != FP32(f).data) {
 					cout << hex << endl << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
@@ -1197,6 +1207,7 @@ class Alltests {
 			cout << "\nNOT PASSED\n";
 			return;
 		}
+		return; //
 
 //		cout << "Add\n";
 
