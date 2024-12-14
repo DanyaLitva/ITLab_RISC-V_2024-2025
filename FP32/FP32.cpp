@@ -8,6 +8,9 @@
 #include <ctime>
 #include <ratio>
 #include <chrono>
+#include <unordered_map>
+#include <string>
+#include <fstream>
 
 using namespace std;
 
@@ -535,15 +538,14 @@ public:
 		
 	}
 
-	static uint32_t special_newton_iter2(uint32_t x, uint32_t d) {
-		uint32_t res;
+	static uint64_t special_newton_iter2(uint32_t x, uint32_t d) {
+		uint64_t res;
 
 		uint64_t mx = x & 0x007FFFFF;
 		uint64_t md = d & 0x007FFFFF;
 		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
 		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
 		// check on mtmp == 0
-//		if ((mtmp >> 24) == 0x0 || (mtmp >> 24) == 0x80'0000) return x; // dont do this, besides make calculations at the end of iter
 
 		mtmp >>= (etmp == 125);
 		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
@@ -564,7 +566,7 @@ public:
 		mtmp = (mtmp >> 8) + ((mtmp & 0x00FF) > 0x0080) + ((mtmp & 0x01FF) == 0x0180); // this one
 		mtmp = mtmp * mx; // x * (2-dx)
 
-		res = (mtmp >> 39) + ((mtmp & 0x7F'FFFF'FFFF) > 0x40'0000'0000) + ((mtmp & 0x0FF'FFFF'FFFF) == 0x0C0'0000'0000); // 64 bit to 24 bit
+		res = (mtmp >> 39) + ((mtmp & 0x7F'FFFF'FFFF) > 0x40'0000'0000) + ((mtmp & 0x0FF'FFFF'FFFF) == 0x0C0'0000'0000); // 64 bit to 24 bit (max 2^64 - 1 to 2^24 - 1)
 
 		// overflow
 		etmp += ((res >= 0x100'0000) << 23);
@@ -579,6 +581,54 @@ public:
 		}
 
 		res = etmp + res - 0x0080'0000;
+		// binary +1 to mantissa
+		return res;
+	}
+
+	static uint64_t special_newton_iter3(uint32_t x, uint32_t d) {
+		uint64_t res;
+
+		uint64_t mx = x & 0x007FFFFF;
+		uint64_t md = d & 0x007FFFFF;
+		uint32_t etmp = ((((x & 0x7F800000) + (d & 0x7F800000)) >> 23) - 127);
+		uint64_t mtmp = (mx * md + (mx << 23) + (md << 23)) << 1;
+
+		mtmp >>= (etmp == 125);
+		mtmp -= 0x4000'0000'0000 * (etmp == 125); // mtmp + 2^46 << 1 >> 1 = 2^46; mtmp - 2^47: leading 2^46 bit << 1
+		etmp += (etmp == 125);
+		mtmp = 0x1'0000'0000'0000 * (etmp == 126) + 0x8000'0000'0000 - mtmp; // 2 - dx; 24 extra bit, 24 usual bit
+
+		if (mtmp < 0x8000'0000'0000) { // mres if less than 2^23; witout if etmp -= (mtmp < 0x8000'0000'0000)
+			etmp -= 1;
+			mtmp <<= 1; //
+		}
+		if (mtmp >= 0x1'0000'0000'0000) { // mres is greater than 2^24; without if
+			etmp += 1;
+			mtmp >>= 1; // bad
+		}
+		etmp = (etmp << 23) + (x & 0x7F800000) - 0x3F800000; // eres
+
+		mx += 0x0080'0000; // mx is 24 bit long, etmp should be 40 bit long
+		mtmp = (mtmp >> 8) + ((mtmp & 0x00FF) > 0x0080) + ((mtmp & 0x01FF) == 0x0180); // this one
+		mtmp = mtmp * mx; // x * (2-dx)
+
+		//		res = (mtmp >> 39) + ((mtmp & 0x7F'FFFF'FFFF) > 0x40'0000'0000) + ((mtmp & 0x0FF'FFFF'FFFF) == 0x0C0'0000'0000); // 64 bit to 24 bit (max 2^64 - 1 to 2^24 - 1)
+		res = (mtmp >> 23) + ((mtmp & 0x7F'FFFF) > 0x40'0000) + ((mtmp & 0x0FF'FFFF) == 0x0C0'0000); // 64 bit to 40 bit (max 2^64 - 1 to 2^40 - 1)
+
+		// overflow
+		etmp += ((res >= 0x100'0000'0000) << 23);
+		res >>= (res >= 0x100'0000'0000);
+
+		// binary calculations
+		mtmp = res * (md + 0x0080'0000);
+		if (mtmp < 0x8000'0000'0000'0000) {
+			uint64_t diff1 = 0x8000'0000'0000'0000 - mtmp;
+			uint64_t diff2 = (res + 1) * (md + 0x0080'0000) - 0x8000'0000'0000'0000;
+			if (diff2 < diff1) ++res;
+		}
+
+		mtmp = etmp; // not to overflow for etmp
+		res = (mtmp << 16) + res - 0x0080'0000'0000;
 		// binary +1 to mantissa
 		return res;
 	}
@@ -753,48 +803,59 @@ public:
 		return (a & 0x7FFF'FFFF) + (~a & 0x8000'0000);
 	}
 
-	static uint64_t special_mul(uint32_t r, uint32_t l) {
-		uint64_t res = (l ^ r) & 0x80000000;
-		uint64_t el = l & 0x7F800000;
-		uint64_t er = r & 0x7F800000;
+	static uint32_t special_mul(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
+		uint32_t res = 0;
+		uint32_t el = l & 0x7F800000;
+		uint32_t er = (r & 0x7F80'0000'0000) >> 16;
 		int64_t eres;
-		uint64_t ml = l & 0x007FFFFF;
-		uint64_t mr = r & 0x007FFFFF;
+		uint64_t ml = l & 0x007F'FFFF;
+		uint64_t mr = r & 0x007F'FFFF'FFFF;
 		uint64_t mres;
+
 
 		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
 			if (ml != 0 && el == 0x7F800000) // if left is nan
 				return res + (l & 0x7FFFFFFF);
 			else if (er == 0x7F800000) // if right is inf or nan
-				return res + (r & 0x7FFFFFFF);
+				return res + ((r >> 16) & 0x7FFFFFFF);
 			return res + (l & 0x7FFFFFFF);
 		}
 
-		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
-		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
+		eres = int((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
+		mres = ((ml + 0x0080'0000 * (el > 0))) * ((mr + 0x0080'0000'0000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
 
-		while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+		while ((mres < 0x4000'0000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
 			eres -= 1;
 			mres <<= 1;
 		}
-		while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
+		while (mres >= 0x8000'0000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
 			eres += 1;
 			mres >>= 1;
 		}
 
+
 		if (eres > 0) { // if normal
+			mres = (mres >> 39) + ((mres & 0x7F'FFFF'FFFF) > 0x40'0000'0000) + ((mres & 0xFF'FFFF'FFFF) == 0xC0'0000'0000); // last 23 bit stored, rounding
+			if (mres >= 0x0100'0000) { // mres is greater than 2^23 (2^24) // should I?
+				eres += 1;
+				mres >>= 1;
+			}
 			if (eres >= 0xFF) { // if infinity
-				return (res | 0x7F800000) << 23;
+				return res | 0x7F800000;
 			}
 			else {
-				return (res << 23) + mres - 0x4000'0000'0000 + (eres << 46); // calculating result
-//				return mres;
+				return res + uint32_t(mres) - 0x00800000 + (eres << 23); // calculating result
 			}
 		}
 		else if (eres >= -23) { // if subnormal
-			mres >>= - eres + 1;
-			return (res << 23) + mres;
-//			return mres;
+//			mres >>= (-eres + 1);
+			uint64_t shift = 1ull << (23 - eres + 1 + 16);
+//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
+
+//			cout << dec << endl << eres << hex << " " << shift - 1 << " " << (shift >> 1) << " " << (shift << 1) - 1 << " " << shift + (shift >> 1) << endl;
+			return res + (mres >> (23 - eres + 1 + 16)) +
+				((mres & (shift - 1)) > (shift >> 1)) +
+				(((mres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
 		}
 
 		return res;
@@ -1059,6 +1120,23 @@ public:
 		return res;
 	}
 
+	static uint32_t zagryadskov_iter(uint32_t l, uint32_t r, uint32_t y, int iterCount = 10) { // l\r = y; r*y = l
+		uint64_t bigy = y;
+		uint32_t tmp;
+		bigy <<= 16;
+		uint64_t currentBit = 0x8000'0000'0000'0000; // idea is to substract a one from bit. E.g, res < 0x123456 => r += curbit, res > 0x123456 => r -= curbit
+		currentBit >>= 47; // 47 bits are correct // mb 48?
+		for (int _ = 0; _ < iterCount; ++_) {
+//			tmp = r * y; // r, y - 64 bit
+			tmp = special_mul(r, bigy); // extend tmp and l up to the 64 bit long 
+			if (tmp < l) bigy += currentBit;
+			else if (tmp > l) bigy -= currentBit;
+			currentBit >>= 1;
+		}
+		y = (bigy >> 16) + ((bigy & 0xFFFF) > 0x8000) + ((bigy & 0x1'FFFF) == 0x1'8000); // last 16 bit stored 
+		return y;
+	}
+
 	static uint32_t div2(uint32_t l, uint32_t r, float& example) noexcept {
 //		cout << endl << l << " " << r << endl; //
 		float dummy; //
@@ -1127,20 +1205,33 @@ public:
 		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
-		x = special_newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
+//		cout << hex << "x: " << x << endl;
+		// add extra iteration in big numbers
+//		uint64_t bigx = special_newton_iter3(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
+		x = special_newton_iter2(x, r);
+//		cout << "bigx: " << bigx << endl;
+		// to debug only
+//		bigx = (bigx >> 16) + ((bigx & 0xFFFF) > 0x8000) + ((bigx & 0x1'FFFF) == 0x1'8000); // last 16 bit stored 
+//		x = bigx;
 
-
-		if (eres >= 255)
+		if (eres >= 255) // l / r = y => l = r*y
 			return res + 0x7F800000;
 		else if (eres > 0) {
 			l = (eres << 23) + ml;
 			uint32_t y = FP32::mul3(l, x, dummy);
+			y = zagryadskov_iter(l, r, y);
+//			uint32_t y = FP32::special_mul(l, bigx);
 			res += y;
 		}
 		else if (eres >= -23) {
 			l = ml + 0x80'0000;
 			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
 			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
+			y = zagryadskov_iter(l, r, y);
+//			cout << hex << "bigx: " << bigx << " eres: " << eres << " shift: " << (uint64_t(-eres + 1) << (23 + 16)) << endl;
+//			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
+//			cout << hex << "bigx: " << bigx << endl;
+//			uint32_t y = FP32::special_mul(l, bigx);
 			res += y;
 		}
 
@@ -1277,7 +1368,7 @@ class Alltests {
 		size_t from = 5;
 
 		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c009000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div2(uint32_t(vl[i]), uint32_t(vr[i]), f);
@@ -1306,8 +1397,8 @@ class Alltests {
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
-				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-//				if (f == f && res != FP32(f).data) {
+//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+				if (f == f && res != FP32(f).data) {
 //					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
@@ -1483,4 +1574,24 @@ int main() {
 
 
 	return 0;
+}
+
+void foo() {
+	int records = 5;
+	vector<int> ids;
+
+	std::unordered_map<int, std::string> mp;
+	for (int i = 0; i < records; ++i) {
+		mp.insert({ids[i], "hash_" + std::to_string(i) + ".txt"});
+	}
+
+    // do smth
+
+	int id = 5;
+	string str = mp.find(id)->second;
+
+	std::ofstream file;
+	string line;
+	file.open(str);
+	file << line;
 }
