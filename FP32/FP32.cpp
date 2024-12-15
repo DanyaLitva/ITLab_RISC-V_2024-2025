@@ -803,6 +803,64 @@ public:
 		return (a & 0x7FFF'FFFF) + (~a & 0x8000'0000);
 	}
 
+	static uint64_t special_mul2(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
+		uint64_t res = 0;
+		uint32_t el = l & 0x7F800000;
+		uint32_t er = (r & 0x7F80'0000'0000) >> 16;
+		int64_t eres;
+		uint64_t ml = l & 0x007F'FFFF;
+		uint64_t mr = r & 0x007F'FFFF'FFFF;
+		uint64_t mres;
+
+
+		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
+			if (ml != 0 && el == 0x7F800000) // if left is nan
+				return res + (l & 0x7FFFFFFF);
+			else if (er == 0x7F800000) // if right is inf or nan
+				return res + ((r >> 16) & 0x7FFFFFFF);
+			return res + (l & 0x7FFFFFFF);
+		}
+
+		eres = int((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
+		mres = ((ml + 0x0080'0000 * (el > 0))) * ((mr + 0x0080'0000'0000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
+
+		while ((mres < 0x4000'0000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+			eres -= 1;
+			mres <<= 1;
+		}
+		while (mres >= 0x8000'0000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
+			eres += 1;
+			mres >>= 1;
+		}
+
+
+		if (eres > 0) { // if normal
+			mres = (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored, rounding
+			if (mres >= 0x0100'0000'0000) { // mres is greater than 2^23 (2^24) // should I?
+				eres += 1;
+				mres >>= 1;
+			}
+			if (eres >= 0xFF) { // if infinity
+				return res | 0x7F80'0000'0000;
+			}
+			else {
+				return res + mres - 0x0080'0000'0000 + (eres << (23 + 16)); // calculating result
+			}
+		}
+		else if (eres >= -23) { // if subnormal
+//			mres >>= (-eres + 1);
+			uint64_t shift = 1ull << (23 - eres + 1);
+//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
+
+//			cout << dec << endl << eres << hex << " " << shift - 1 << " " << (shift >> 1) << " " << (shift << 1) - 1 << " " << shift + (shift >> 1) << endl;
+			return res + (mres >> (23 - eres + 1)) +
+				((mres & (shift - 1)) > (shift >> 1)) +
+				(((mres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+		}
+
+		return res;
+	}
+
 	static uint32_t special_mul(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
 		uint32_t res = 0;
 		uint32_t el = l & 0x7F800000;
@@ -848,11 +906,11 @@ public:
 			}
 		}
 		else if (eres >= -23) { // if subnormal
-//			mres >>= (-eres + 1);
+			//			mres >>= (-eres + 1);
 			uint64_t shift = 1ull << (23 - eres + 1 + 16);
-//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
+			//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
 
-//			cout << dec << endl << eres << hex << " " << shift - 1 << " " << (shift >> 1) << " " << (shift << 1) - 1 << " " << shift + (shift >> 1) << endl;
+			//			cout << dec << endl << eres << hex << " " << shift - 1 << " " << (shift >> 1) << " " << (shift << 1) - 1 << " " << shift + (shift >> 1) << endl;
 			return res + (mres >> (23 - eres + 1 + 16)) +
 				((mres & (shift - 1)) > (shift >> 1)) +
 				(((mres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
@@ -1120,20 +1178,22 @@ public:
 		return res;
 	}
 
-	static uint32_t zagryadskov_iter(uint32_t l, uint32_t r, uint32_t y, int iterCount = 10) { // l\r = y; r*y = l
-		uint64_t bigy = y;
-		uint32_t tmp;
-		bigy <<= 16;
+	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 4) { // l\r = y; r*y = l
+		uint64_t tmp;
+		l <<= 16;
+		cout << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
+
 		uint64_t currentBit = 0x8000'0000'0000'0000; // idea is to substract a one from bit. E.g, res < 0x123456 => r += curbit, res > 0x123456 => r -= curbit
 		currentBit >>= 47; // 47 bits are correct // mb 48?
 		for (int _ = 0; _ < iterCount; ++_) {
 //			tmp = r * y; // r, y - 64 bit
-			tmp = special_mul(r, bigy); // extend tmp and l up to the 64 bit long 
-			if (tmp < l) bigy += currentBit;
-			else if (tmp > l) bigy -= currentBit;
+			tmp = special_mul2(r, y); // extend tmp and l up to the 64 bit long 
+			cout << hex << "r*y: " << tmp << endl;
+			if (tmp < l) y += currentBit;
+			else if (tmp > l) y -= currentBit;
 			currentBit >>= 1;
 		}
-		y = (bigy >> 16) + ((bigy & 0xFFFF) > 0x8000) + ((bigy & 0x1'FFFF) == 0x1'8000); // last 16 bit stored 
+		y = (y >> 16) + ((y & 0xFFFF) > 0x8000) + ((y & 0x1'FFFF) == 0x1'8000); // last 16 bit stored 
 		return y;
 	}
 
@@ -1141,8 +1201,8 @@ public:
 //		cout << endl << l << " " << r << endl; //
 		float dummy; //
 		example = float(FP32(l)) / float(FP32(r)); //
-		uint32_t rCopied = r; //
-		uint32_t lCopied = l; //
+		uint32_t rCopied = r & 0x7FFF'FFFF; //
+		uint32_t lCopied = l & 0x7FFF'FFFF; //
 		uint32_t res = (l ^ r) & 0x80000000;
 		uint32_t el = l & 0x7F800000;
 		uint32_t er = r & 0x7F800000;
@@ -1207,8 +1267,8 @@ public:
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
 //		cout << hex << "x: " << x << endl;
 		// add extra iteration in big numbers
-//		uint64_t bigx = special_newton_iter3(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
-		x = special_newton_iter2(x, r);
+		uint64_t bigx = special_newton_iter3(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
+//		x = special_newton_iter2(x, r);
 //		cout << "bigx: " << bigx << endl;
 		// to debug only
 //		bigx = (bigx >> 16) + ((bigx & 0xFFFF) > 0x8000) + ((bigx & 0x1'FFFF) == 0x1'8000); // last 16 bit stored 
@@ -1218,21 +1278,23 @@ public:
 			return res + 0x7F800000;
 		else if (eres > 0) {
 			l = (eres << 23) + ml;
-			uint32_t y = FP32::mul3(l, x, dummy);
-			y = zagryadskov_iter(l, r, y);
-//			uint32_t y = FP32::special_mul(l, bigx);
-			res += y;
+//			uint32_t y = FP32::mul3(l, x, dummy);
+			uint32_t y = FP32::special_mul(l, bigx);
+//			uint64_t y = FP32::special_mul2(l, bigx);
+//			y = zagryadskov_iter(lCopied, rCopied, y);
+			res += uint32_t(y);
 		}
 		else if (eres >= -23) {
 			l = ml + 0x80'0000;
-			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
-			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
-			y = zagryadskov_iter(l, r, y);
+//			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
+//			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
 //			cout << hex << "bigx: " << bigx << " eres: " << eres << " shift: " << (uint64_t(-eres + 1) << (23 + 16)) << endl;
-//			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
 //			cout << hex << "bigx: " << bigx << endl;
-//			uint32_t y = FP32::special_mul(l, bigx);
-			res += y;
+			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
+			uint32_t y = FP32::special_mul(l, bigx);
+//			uint64_t y = FP32::special_mul2(l, bigx);
+//			y = zagryadskov_iter(lCopied, rCopied, y);
+			res += uint32_t(y);
 		}
 
 		return res;
