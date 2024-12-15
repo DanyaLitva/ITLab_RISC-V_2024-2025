@@ -977,6 +977,65 @@ public:
 		return res;
 	}
 
+	static uint64_t special_mul4(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
+		uint64_t res = 0;
+		uint32_t el = l & 0x7F800000;
+		uint32_t er = (r & 0x7F80'0000'0000) >> 16;
+		int64_t eres;
+		uint64_t ml = l & 0x007F'FFFF;
+		uint64_t mr = r & 0x007F'FFFF'FFFF;
+		uint64_t mres;
+
+
+		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
+			if (ml != 0 && el == 0x7F800000) // if left is nan
+				return res + (l & 0x7FFFFFFF);
+			else if (er == 0x7F800000) // if right is inf or nan
+				return res + ((r >> 16) & 0x7FFFFFFF);
+			return res + (l & 0x7FFFFFFF);
+		}
+
+		eres = int((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
+		mres = ((ml + 0x0080'0000 * (el > 0))) * ((mr + 0x0080'0000'0000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
+
+		while ((mres < 0x4000'0000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+			eres -= 1;
+			mres <<= 1;
+		}
+		while (mres >= 0x8000'0000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
+			eres += 1;
+			mres >>= 1;
+		}
+
+
+		if (eres > 0) { // if normaд
+//			mres = (mres >> 7) + ((mres & 0x7F) > 0x40) + ((mres & 0xFF) == 0xC0); // last 23 bit stored, rounding
+			if (mres >= 0x8000'0000'0000'0000) { // mres is greater than 2^23 (2^24) // should I?
+				eres += 1;
+				mres >>= 1;
+			}
+			if (eres >= 0xFF) { // if infinity
+				return res | 0x7F80'0000'0000'0000;
+			}
+			else {
+//				return res + mres - 0x0080'0000'0000'0000 + (eres << (23 + 32)); // calculating result
+				return mres - 0x4000'0000'0000'0000;
+			}
+		}
+		else if (eres >= -62) { // if subnormal
+			//			mres >>= (-eres + 1);
+			uint64_t shift = 1ull << (- eres + 1);
+			//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
+
+			//			cout << dec << endl << eres << hex << " " << shift - 1 << " " << (shift >> 1) << " " << (shift << 1) - 1 << " " << shift + (shift >> 1) << endl;
+			return res + (mres >> (- eres + 1)) +
+				((mres & (shift - 1)) > (shift >> 1)) +
+				(((mres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+		}
+
+		return res;
+	}
+
 	static uint32_t div(uint32_t l, uint32_t r, float& example) noexcept {
 		uint32_t savedl = l, savedr = r;
 		cout << endl << l << " " << r << endl;
@@ -1236,22 +1295,25 @@ public:
 		return res;
 	}
 
-	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 16) { // l\r = y; r*y = l
+	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 18) { // l\r = y; r*y = l
 		uint64_t tmp;
-		l <<= 32; // 16
-//		cout << endl << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
+//		l &= 0x7F80'0000;
+		l <<= 32 + 7; // 16
+		cout << endl << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
 
 		uint64_t currentBit = 0x8000'0000'0000'0000; // idea is to substract a one from bit. E.g, res < 0x123456 => r += curbit, res > 0x123456 => r -= curbit
-		currentBit >>= 48; // 47 bits are correct // mb 48?
+		currentBit >>= 47; // 56 bits are correct. 16 bits are zero, 1 bit is sign (0), 8 bits are exp, 23 bits are mantissa (48 by this moment), 8 bit idk
 		for (int _ = 0; _ < iterCount; ++_) {
 //			tmp = r * y; // r, y - 64 bit
-			tmp = special_mul3(r, y); // extend tmp and l up to the 64 bit long 
-//			cout << hex << "r*y: " << tmp << " y: " << y << endl;
+			tmp = special_mul4(r, y); // extend tmp and l up to the 64 bit long 
+			cout << hex << "r*y: " << tmp << " y: " << y << endl;
 			if (tmp < l) y += currentBit;
 			else if (tmp > l) y -= currentBit;
 			currentBit >>= 1;
 		}
+
 		y = (y >> 16) + ((y & 0xFFFF) > 0x8000) + ((y & 0x1'FFFF) == 0x1'8000); // last 16 bit stored 
+//		y = (y >> 16) + ((y & 0xFFFF) >= 0x8000);
 		if ((y & 0x7F80'0000) == 0x7F80'0000) return 0x7F80'0000;
 		return y;
 	}
@@ -1486,10 +1548,10 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 6;
+		size_t from = 1;
 
-		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div2(uint32_t(vl[i]), uint32_t(vr[i]), f);
@@ -1511,8 +1573,8 @@ class Alltests {
 //		cout << "Add\n";
 
 //	for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 69632)
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 6528) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 6963) {
 //				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
