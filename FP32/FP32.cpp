@@ -334,7 +334,7 @@ public:
 	// exp:  0x7F800000
 	// mant: 0x007FFFFF
 
-	static uint32_t mul_32_32_32(uint32_t l, uint32_t r, float& example) noexcept { // CSR register, rounding to closest odd number // CRlibn // Increase bit stored!
+	static uint32_t mul(uint32_t l, uint32_t r, float& example) noexcept { // CSR register, rounding to closest odd number // CRlibn // Increase bit stored!
 		example = float(FP32(l)) * float(FP32(r)); //
 		uint32_t res = (l ^ r) & 0x80000000;
 		uint32_t el = l & 0x7F800000;
@@ -680,7 +680,7 @@ public:
 		if (mres >= 0x8000'0000'0000 && eres <= 0) { // new
 			mres >>= 1;
 		}
-		if (coutflag) cout << "mres: " << mres << ", eres: " << eres << ", true: " << FP32::mul_32_32_32(a, b, dummy) << endl; //
+		if (coutflag) cout << "mres: " << mres << ", eres: " << eres << ", true: " << FP32::mul(a, b, dummy) << endl; //
 
 		// ADDING PREPARATIONS
 		mc = (mc + (uint64_t(ec > 0) << 23)) << 24;
@@ -919,6 +919,64 @@ public:
 		return res;
 	}
 
+	static uint64_t special_mul_32_32_64norouding(uint32_t l, uint32_t r) { // double value as 1 8 46: 16 bit extended mantissa
+		uint64_t res = (l ^ r) & 0x7FFF'FFFF;
+		uint32_t el = l & 0x7F80'0000;
+		uint32_t er = r & 0x7F80'0000;
+		int64_t eres;
+		uint64_t ml = l & 0x007F'FFFF;
+		uint64_t mr = r & 0x007F'FFFF;
+		uint64_t mres;
+
+
+		if ((el == 0x7F800000) || (er == 0x7F800000)) { // nan and inf
+			if (ml != 0 && el == 0x7F800000) // if left is nan
+				return res + (l & 0x7FFFFFFF);
+			else if (er == 0x7F800000) // if right is inf or nan
+				return res + (r & 0x7FFFFFFF);
+			return res + (l & 0x7FFFFFFF);
+		}
+
+		eres = int((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
+		mres = ((ml + 0x0080'0000 * (el > 0))) * ((mr + 0x0080'0000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
+
+		while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+			eres -= 1;
+			mres <<= 1;
+		}
+		while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
+			eres += 1;
+			mres >>= 1; // is it rounding?
+		}
+
+
+		if (eres > 0) { // if normal
+//			mres = (mres >> 39) + ((mres & 0x7F'FFFF'FFFF) > 0x40'0000'0000) + ((mres & 0xFF'FFFF'FFFF) == 0xC0'0000'0000); // last 23 bit stored, rounding
+//			if (mres >= 0x0100'0000) { // mres is greater than 2^23 (2^24) // should I?
+//				eres += 1;
+//				mres >>= 1;
+//			}
+			if (eres >= 0xFF) { // if infinity
+				return res | 0x7F800000;
+			}
+			else {
+				return res + uint64_t(mres) - 0x4000'0000'0000 + (eres << 46); // calculating result
+			}
+		}
+		else if (eres >= -23) { // if subnormal
+			//			mres >>= (-eres + 1);
+			uint64_t shift = 1ull << (- eres + 1); //
+			//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
+
+			//			cout << dec << endl << eres << hex << " " << shift - 1 << " " << (shift >> 1) << " " << (shift << 1) - 1 << " " << shift + (shift >> 1) << endl;
+			return res + (mres >> (- eres + 1)) +
+				((mres & (shift - 1)) > (shift >> 1)) +
+				(((mres & ((shift << 1) - 1))) == (shift + (shift >> 1))); // this is actually rouding
+		}
+
+		return res;
+	}
+
 	static uint64_t special_mul_32_64_64norouding(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
 		uint64_t res = 0;
 		uint32_t el = l & 0x7F800000;
@@ -1106,7 +1164,7 @@ public:
 		//eres = (el >> 23);
 		//eres -= (er >> 23) - 126; // if el is subnormal? 
 //		cout << hex << endl << "r " << r << endl;
-		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul_32_32_32(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
+		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 
 		/*
 		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy);
@@ -1178,7 +1236,7 @@ public:
 			l = (eres << 23) + ml;
 
 			cout << l << endl;
-			uint32_t y = FP32::mul_32_32_32(l, x, dummy); // y = l*x = l * 1/r
+			uint32_t y = FP32::mul(l, x, dummy); // y = l*x = l * 1/r
 			cout << res + y << endl;
 //			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); // d = l - r*y = l - r*l*1/r
 			r = usub(r);
@@ -1207,7 +1265,7 @@ public:
 //			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
 
 			cout << x << endl;
-			uint32_t y = FP32::mul_32_32_32(l, x, dummy); // y = l*x = l * 1/r
+			uint32_t y = FP32::mul(l, x, dummy); // y = l*x = l * 1/r
 			cout << y << endl;
 //			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); // d = l - r*y = l - r*l*1/r
 			r = usub(r);
@@ -1318,6 +1376,54 @@ public:
 		return y;
 	}
 
+	static uint32_t closedNum(uint64_t l, uint32_t r, uint32_t y) {
+		uint32_t lefty = y, righty = y; // trying to find closest value
+		if ((y & 0x7FFF'FFFF) != 0x7FFF'FFFF) righty += 1; // if y not an inf
+		if ((y & 0x7FFF'FFFF) != 0x0000'0000) lefty  -= 1; // if y not a zero
+
+		uint64_t leftl, midl, rightl; // calculating approximations
+		leftl  = FP32::special_mul_32_32_64norouding(r, lefty );
+		midl   = FP32::special_mul_32_32_64norouding(r, y     );
+		rightl = FP32::special_mul_32_32_64norouding(r, righty);
+		l <<= 23;
+
+		cout << hex << endl << leftl << " " << midl << " " << rightl << " " << l << endl;
+
+		uint64_t diffl, diffm, diffr; // calculating differences
+		if (leftl < l) diffl = l - leftl;
+		else diffl = leftl - l;
+		if (midl < l) diffm = l - midl;
+		else diffm = midl - l;
+		if (rightl > l) diffr = rightl - l;
+		else diffr = l = rightl;
+
+		cout << hex << endl << diffl << " " << diffm << " " << diffr << endl;
+
+		if (diffl < diffm) {
+			if (diffl < diffr) return lefty;
+			if (diffl == diffr) return y;
+			if (diffl > diffr) return righty;
+		}
+		if (diffl == diffm) {
+			if (diffr < diffl) return righty;
+			if (diffr == diffl) return y;
+			if (diffr > diffl) {
+				if ((y & 0x1) == 0x0) return y;
+				if ((y & 0x1) == 0x1) return lefty;
+			}
+		}
+		if (diffl > diffm) {
+			if (diffr < diffm) return righty;
+			if (diffr == diffm) {
+				if ((y & 0x1) == 0x0) return y;
+				if ((y & 0x1) == 0x1) return righty;
+			}
+			if (diffr > diffm) return y;
+		}
+
+		return y;
+	}
+
 	static uint32_t div2(uint32_t l, uint32_t r, float& example) noexcept {
 //		cout << endl << l << " " << r << endl; //
 		float dummy; //
@@ -1383,41 +1489,99 @@ public:
 		r = mr + (126 << 23); // diapason [0.5, 1)
 
 
-		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul_32_32_32(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
+		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
-//		cout << hex << "x: " << x << endl;
-		// add extra iteration in big numbers
-		uint64_t bigx = special_newton_iter_no_rounding(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
-//		x = special_newton_iter2(x, r);
-//		cout << "bigx: " << bigx << endl;
-		// to debug only
-//		bigx = (bigx >> 16) + ((bigx & 0xFFFF) > 0x8000) + ((bigx & 0x1'FFFF) == 0x1'8000); // last 16 bit stored 
-//		x = bigx;
+//		uint64_t bigx = special_newton_iter_no_rounding(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
+		x = special_newton_iter_rouding(x, r);
 
 		if (eres >= 255) // l / r = y => l = r*y
 			return res + 0x7F800000;
 		else if (eres > 0) {
-			l = (eres << 23) + ml;
-//			uint32_t y = FP32::mul3(l, x, dummy);
-//			uint32_t y = FP32::special_mul(l, bigx);
-			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
-			y = zagryadskov_iter(lCopied, rCopied, y);
-			res += uint32_t(y);
-		}
-		else if (eres >= -39) {
-			l = ml + 0x80'0000;
-//			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
-//			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
-//			cout << hex << "bigx: " << bigx << " eres: " << eres << " shift: " << (uint64_t(-eres + 1) << (23 + 16)) << endl;
-//			cout << hex << "bigx: " << bigx << endl;
-			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
-//			uint32_t y = FP32::special_mul(l, bigx);
-			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
-			y = zagryadskov_iter(lCopied, rCopied, y);
-			res += uint32_t(y);
-		}
+//			cout << endl << "normal branch" << endl;
+//			l = (eres << 23) + ml; // shift l here to diapason [0.5, 1). Y will recalculate automatically!!!!!
+			l = (126 << 23) + ml; // = eres - eres + 126
+//			x -= (1 << 23); //
+			uint32_t y = FP32::mul(l, x, dummy);
+			
+//			y = zagryadskov_iter(lCopied, rCopied, y);
+//			uint32_t y = FP32::special_mul_32_64_32rouding(l, bigx);
+// 
+//			rCopied = usub(rCopied);
+//			float df = std::fmaf(FP32(rCopied), FP32(y), FP32(lCopied));
+//			cout << hex << y << " " << df << endl;
+//			y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
+//			cout << y << endl;
 
+			if ((y & 0x7FFF'FFFF) != 0x7F80'0000) {
+				r = usub(r);
+//				cout << hex << FP32(r) << " " << FP32(l) << endl;
+				float df = std::fmaf(FP32(r), FP32(y), FP32(l));
+//				cout << FP32(y) << " " << df << endl;
+				y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
+//				cout << FP32(y) << " " << FP32(x) << endl;
+			}
+
+//			y -= (126 - eres) << 23; //!!!
+
+			eres = -126 + ((y & 0x7F80'0000) >> 23) + eres;
+			if (eres > 0) {
+				y &= 0x807F'FFFF;
+				y += eres << 23;
+			}
+			else if (eres >= -23) {
+				y = (y & 0x007F'FFFF) + 0x0080'0000;
+				uint64_t shift = 1ull << (-eres + 1);
+				y = (y >> (-eres + 1)) +
+					((y & (shift - 1)) > (shift >> 1)) +
+					(((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+			}
+			else
+				y = 0;
+
+			res += uint32_t(y);
+		}
+		else if (eres >= -30) {
+			//			cout << endl << "subnormal branch" << endl;
+			l = ml + 0x80'0000;
+			l += 126 << 23;
+			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
+			r += (-eres + 1) << 23; //?
+			uint32_t y = FP32::mul(l, x, dummy); // y = l*x = l * 1/r
+			//			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
+			//			uint32_t y = FP32::special_mul_32_64_32rouding(l, bigx);
+			//			y = zagryadskov_iter(lCopied, rCopied, y);
+			if ((y & 0x7FFF'FFFF) != 0x7F80'0000) {
+				r = usub(r);
+				cout << hex << endl << FP32(r) << " " << FP32(l) << endl;
+				float df = std::fmaf(FP32(r), FP32(y), FP32(l));
+				cout << FP32(y) << " " << df << endl;
+				y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
+				cout << FP32(y) << " " << FP32(x) << endl;
+
+
+				eres = -126 + ((y & 0x7F80'0000) >> 23);
+				
+				cout << hex << endl << y << endl; // 0011 1111 0111 0100 1000 1001 1000 1101
+				if (eres > 0) {
+					y &= 0x807F'FFFF;
+					y += eres << 23;
+				}
+				else if (eres >= -23) {
+					y = (y & 0x007F'FFFF) + 0x0080'0000;
+					cout << y << endl;  // 0000 0000 1111 0100 1000 1001 1000 1101
+					uint64_t shift = 1ull << (-eres + 1);
+//					y >>= -eres + 1;
+					y = (y >> (-eres + 1)) + ((y & (shift - 1)) > (shift >> 1)) + (((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+					cout << y << endl; // 0000 0000 0111 1010 0100 0100 1100 0110
+				}
+				else
+					y = 0;
+			}
+
+			res += uint32_t(y);
+		}
+		
 		return res;
 	}
 
@@ -1476,6 +1640,10 @@ public:
 		FP32 res = *this;
 		res /= bf;
 		return res;
+	}
+	friend std::ostream& operator<<(std::ostream& s, const FP32& f) {
+		s << f.example;
+		return s;
 	}
 };
 
@@ -1548,10 +1716,10 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 10;
+		size_t from = 0;
 
-		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980, 0x11000, 0x11000, 0x11000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x3c0e6000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11, 0x231000, 0x383f0000, 0x3c05e000, 0x3c091000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div2(uint32_t(vl[i]), uint32_t(vr[i]), f);
