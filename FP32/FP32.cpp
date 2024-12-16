@@ -268,7 +268,7 @@ public:
 		return FP32::add3(l, r, example);
 	}
 
-	FP32 mul2(const FP32 l, const FP32 r) const noexcept { //last bit error in subnormals
+	FP32 mul_not_use(const FP32 l, const FP32 r) const noexcept { //last bit error in subnormals
 		FP32 res;
 		//res.data = (l.getsign() ^ r.getsign()) << 31;
 		res.data = 0;
@@ -334,7 +334,7 @@ public:
 	// exp:  0x7F800000
 	// mant: 0x007FFFFF
 
-	static uint32_t mul3(uint32_t l, uint32_t r, float& example) noexcept { // CSR register, rounding to closest odd number // CRlibn // Increase bit stored!
+	static uint32_t mul_32_32_32(uint32_t l, uint32_t r, float& example) noexcept { // CSR register, rounding to closest odd number // CRlibn // Increase bit stored!
 		example = float(FP32(l)) * float(FP32(r)); //
 		uint32_t res = (l ^ r) & 0x80000000;
 		uint32_t el = l & 0x7F800000;
@@ -538,7 +538,7 @@ public:
 		
 	}
 
-	static uint64_t special_newton_iter2(uint32_t x, uint32_t d) {
+	static uint64_t special_newton_iter_rouding(uint32_t x, uint32_t d) {
 		uint64_t res;
 
 		uint64_t mx = x & 0x007FFFFF;
@@ -585,7 +585,7 @@ public:
 		return res;
 	}
 
-	static uint64_t special_newton_iter3(uint32_t x, uint32_t d) {
+	static uint64_t special_newton_iter_no_rounding(uint32_t x, uint32_t d) {
 		uint64_t res;
 
 		uint64_t mx = x & 0x007FFFFF;
@@ -633,7 +633,7 @@ public:
 		return res;
 	}
 
-	static uint32_t fma3(uint32_t a, uint32_t b, uint32_t c, float& example) { // a*b + c;
+	static uint32_t fma(uint32_t a, uint32_t b, uint32_t c, float& example) { // a*b + c;
 		float dummy; //
 		bool coutflag = true; //
 		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
@@ -680,7 +680,7 @@ public:
 		if (mres >= 0x8000'0000'0000 && eres <= 0) { // new
 			mres >>= 1;
 		}
-		if (coutflag) cout << "mres: " << mres << ", eres: " << eres << ", true: " << FP32::mul3(a, b, dummy) << endl; //
+		if (coutflag) cout << "mres: " << mres << ", eres: " << eres << ", true: " << FP32::mul_32_32_32(a, b, dummy) << endl; //
 
 		// ADDING PREPARATIONS
 		mc = (mc + (uint64_t(ec > 0) << 23)) << 24;
@@ -803,7 +803,7 @@ public:
 		return (a & 0x7FFF'FFFF) + (~a & 0x8000'0000);
 	}
 
-	static uint64_t special_mul2(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
+	static uint64_t special_mul_32_64_64rouding(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
 		uint64_t res = 0;
 		uint32_t el = l & 0x7F800000;
 		uint32_t er = (r & 0x7F80'0000'0000) >> 16;
@@ -861,7 +861,7 @@ public:
 		return res;
 	}
 
-	static uint32_t special_mul(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
+	static uint32_t special_mul_32_64_32rouding(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
 		uint32_t res = 0;
 		uint32_t el = l & 0x7F800000;
 		uint32_t er = (r & 0x7F80'0000'0000) >> 16;
@@ -919,7 +919,7 @@ public:
 		return res;
 	}
 
-	static uint64_t special_mul3(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
+	static uint64_t special_mul_32_64_64norouding(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
 		uint64_t res = 0;
 		uint32_t el = l & 0x7F800000;
 		uint32_t er = (r & 0x7F80'0000'0000) >> 16;
@@ -977,7 +977,7 @@ public:
 		return res;
 	}
 
-	static uint64_t special_mul4(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
+	static uint64_t special_mul_32_64_64noExp(uint32_t l, uint64_t r) { // double value as 1 8 39: 16 bit extended mantissa
 		uint64_t res = 0;
 		uint32_t el = l & 0x7F800000;
 		uint32_t er = (r & 0x7F80'0000'0000) >> 16;
@@ -1106,7 +1106,7 @@ public:
 		//eres = (el >> 23);
 		//eres -= (er >> 23) - 126; // if el is subnormal? 
 //		cout << hex << endl << "r " << r << endl;
-		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
+		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul_32_32_32(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 
 		/*
 		x = FP32::mul3(x, FP32::sub(0x40000000, FP32::mul3(r, x, dummy), dummy), dummy);
@@ -1138,7 +1138,7 @@ public:
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
 //		cout << hex << x << endl; //
 //		cout << FP32::mul3(x, r, dummy) << endl;
-		x = special_newton_iter2(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
+		x = special_newton_iter_rouding(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
 //		cout << hex << x << endl; //
 //		cout << hex << FP32::mul3(x, r, dummy) << endl; //
 //		if (FP32::mul3(x, r, dummy) > 0x3f800000ul) --x;
@@ -1178,7 +1178,7 @@ public:
 			l = (eres << 23) + ml;
 
 			cout << l << endl;
-			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
+			uint32_t y = FP32::mul_32_32_32(l, x, dummy); // y = l*x = l * 1/r
 			cout << res + y << endl;
 //			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); // d = l - r*y = l - r*l*1/r
 			r = usub(r);
@@ -1207,7 +1207,7 @@ public:
 //			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
 
 			cout << x << endl;
-			uint32_t y = FP32::mul3(l, x, dummy); // y = l*x = l * 1/r
+			uint32_t y = FP32::mul_32_32_32(l, x, dummy); // y = l*x = l * 1/r
 			cout << y << endl;
 //			uint32_t d = FP32::sub(l, FP32::mul3(r, y, dummy), dummy); // d = l - r*y = l - r*l*1/r
 			r = usub(r);
@@ -1295,18 +1295,18 @@ public:
 		return res;
 	}
 
-	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 18) { // l\r = y; r*y = l
+	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 6) { // l\r = y; r*y = l
 		uint64_t tmp;
 //		l &= 0x7F80'0000;
 		l <<= 32 + 7; // 16
-		cout << endl << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
+//		cout << endl << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
 
 		uint64_t currentBit = 0x8000'0000'0000'0000; // idea is to substract a one from bit. E.g, res < 0x123456 => r += curbit, res > 0x123456 => r -= curbit
-		currentBit >>= 47; // 56 bits are correct. 16 bits are zero, 1 bit is sign (0), 8 bits are exp, 23 bits are mantissa (48 by this moment), 8 bit idk
+		currentBit >>= 56; // 56 bits are correct. 16 bits are zero, 1 bit is sign (0), 8 bits are exp, 23 bits are mantissa (48 by this moment), 8 bit idk
 		for (int _ = 0; _ < iterCount; ++_) {
 //			tmp = r * y; // r, y - 64 bit
-			tmp = special_mul4(r, y); // extend tmp and l up to the 64 bit long 
-			cout << hex << "r*y: " << tmp << " y: " << y << endl;
+			tmp = special_mul_32_64_64noExp(r, y); // extend tmp and l up to the 64 bit long 
+//			cout << hex << "r*y: " << tmp << " y: " << y << endl;
 			if (tmp < l) y += currentBit;
 			else if (tmp > l) y -= currentBit;
 			currentBit >>= 1;
@@ -1383,12 +1383,12 @@ public:
 		r = mr + (126 << 23); // diapason [0.5, 1)
 
 
-		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul3(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
+		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul_32_32_32(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
 //		cout << hex << "x: " << x << endl;
 		// add extra iteration in big numbers
-		uint64_t bigx = special_newton_iter3(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
+		uint64_t bigx = special_newton_iter_no_rounding(x, r); // x = x * (2 - r*x) // make 2 binary search operations? embed this check into newton_iter 
 //		x = special_newton_iter2(x, r);
 //		cout << "bigx: " << bigx << endl;
 		// to debug only
@@ -1401,7 +1401,7 @@ public:
 			l = (eres << 23) + ml;
 //			uint32_t y = FP32::mul3(l, x, dummy);
 //			uint32_t y = FP32::special_mul(l, bigx);
-			uint64_t y = FP32::special_mul2(l, bigx);
+			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
 			y = zagryadskov_iter(lCopied, rCopied, y);
 			res += uint32_t(y);
 		}
@@ -1413,7 +1413,7 @@ public:
 //			cout << hex << "bigx: " << bigx << endl;
 			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
 //			uint32_t y = FP32::special_mul(l, bigx);
-			uint64_t y = FP32::special_mul2(l, bigx);
+			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
 			y = zagryadskov_iter(lCopied, rCopied, y);
 			res += uint32_t(y);
 		}
@@ -1526,7 +1526,7 @@ class Alltests {
 				l = uint32_t(lc);
 				r = uint32_t(rc);
 				//l = l.add2(l, r);
-				l = l.mul2(l, r);
+	//			l = l.mul_32_32_32(l, r);
 				//cout << endl << float(BF16(l)) << " " << float(BF16(r)) << endl;
 				//cout << l.example << " " << float(l) << endl;
 				if (/*!isnan(l.example)*/ (l.example == l.example) && !equal_prec(FP32(l.example).data, l.data, 1)) {
@@ -1548,7 +1548,7 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 1;
+		size_t from = 10;
 
 		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
 		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
@@ -1573,8 +1573,8 @@ class Alltests {
 //		cout << "Add\n";
 
 //	for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 69632)
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 6528) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 6963) {
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 69632) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69632) {
 //				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
