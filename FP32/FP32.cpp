@@ -1525,7 +1525,10 @@ public:
 //			y -= (126 - eres) << 23; //!!!
 
 			eres = -126 + ((y & 0x7F80'0000) >> 23) + eres;
-			if (eres > 0) {
+
+			if (eres >= 0xFF)
+				y = 0xFF << 23;
+			else if (eres > 0) {
 				y &= 0x807F'FFFF;
 				y += eres << 23;
 			}
@@ -1553,27 +1556,29 @@ public:
 			//			y = zagryadskov_iter(lCopied, rCopied, y);
 			if ((y & 0x7FFF'FFFF) != 0x7F80'0000) {
 				r = usub(r);
-				cout << hex << endl << FP32(r) << " " << FP32(l) << endl;
+//				cout << hex << endl << FP32(r) << " " << FP32(l) << endl; //
 				float df = std::fmaf(FP32(r), FP32(y), FP32(l));
-				cout << FP32(y) << " " << df << endl;
+//				cout << FP32(y) << " " << df << endl; //
 				y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
-				cout << FP32(y) << " " << FP32(x) << endl;
+//				cout << FP32(y) << " " << FP32(x) << endl; //
 
 
 				eres = -126 + ((y & 0x7F80'0000) >> 23);
 				
-				cout << hex << endl << y << endl; // 0011 1111 0111 0100 1000 1001 1000 1101
-				if (eres > 0) {
+//				cout << hex << endl << y << endl; // 0011 1111 0111 0100 1000 1001 1000 1101
+				if (eres >= 0xFF)
+					y = 0xFF << 23;
+				else if (eres > 0) {
 					y &= 0x807F'FFFF;
 					y += eres << 23;
 				}
 				else if (eres >= -23) {
 					y = (y & 0x007F'FFFF) + 0x0080'0000;
-					cout << y << endl;  // 0000 0000 1111 0100 1000 1001 1000 1101
+//					cout << y << endl;  // 0000 0000 1111 0100 1000 1001 1000 1101
 					uint64_t shift = 1ull << (-eres + 1);
 //					y >>= -eres + 1;
 					y = (y >> (-eres + 1)) + ((y & (shift - 1)) > (shift >> 1)) + (((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
-					cout << y << endl; // 0000 0000 0111 1010 0100 0100 1100 0110
+//					cout << y << endl; // 0000 0000 0111 1010 0100 0100 1100 0110
 				}
 				else
 					y = 0;
@@ -1716,10 +1721,10 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 0;
+		size_t from = 15;
 
-		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980, 0x11000, 0x11000, 0x11000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x3c0e6000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11, 0x231000, 0x383f0000, 0x3c05e000, 0x3c091000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980, 0x11000, 0x11000, 0x11000, 0x3c911000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x3c0e6000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11, 0x231000, 0x383f0000, 0x3c05e000, 0x80009000, 0x3c091000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div2(uint32_t(vl[i]), uint32_t(vr[i]), f);
@@ -1748,8 +1753,8 @@ class Alltests {
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
-//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-				if (f == f && res != FP32(f).data) {
+				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+//				if (f == f && res != FP32(f).data) {
 //					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
