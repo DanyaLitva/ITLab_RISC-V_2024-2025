@@ -15,7 +15,7 @@ public:
     unsigned int exp : expLength; //порядок         %32
     unsigned int sign : signLength; //знак           %2
 
-
+    
     //
     FP16(int _sign = 0, int _exp = 0, int _man = 0) :sign(_sign), exp(_exp), man(_man) {}
     
@@ -227,6 +227,7 @@ public:
 
          //добавить округление при 0.5 в зависимости от последнего бита
          //если пред четное, то не округляется вверх,
+        //использовать FMA переписать + и *
         Res = N * X;
         return Res;
     }
@@ -371,6 +372,7 @@ FP16 FP16::AddFP16_N_N(FP16 N1, FP16 N2) {
             if (flag && (N1.exp <= N2.exp)) {
                 if ((N1.man % (1 << (MaxExp - N1.exp))) >= (1 << (MaxExp - N1.exp - 1)))  
                     Res.man = Res.man + pow(-1, N1.sign);
+                std::cout<<"!";
             }
         }
     }
@@ -563,7 +565,7 @@ FP16 FP16::MulFP16_S_S(FP16 N1, FP16 N2) {
 void Test_Mult();
 void Test_Add();
 void Test_Sub();
-
+void Test_Div();
 
 /*1 - A   0.124695 - B
 0.875977 - my   0.875305 - need
@@ -592,10 +594,10 @@ void Test_Sub();
 
 using namespace std;
 int main() {
-    //Test_Sub();
-
-    float f1 = -5.812500000000000;
-    float f2 = 3.986328125000000;
+    //Test_Div();
+    
+    float f1 = 1;
+    float f2 = 0.124695;
     
     FP16 A(f1);
     FP16 B(f2);
@@ -754,3 +756,44 @@ void Test_Sub() {
         }
     }
 }
+
+
+
+
+void Test_Div() {
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 16; exp1 < (1 << expLength); ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 10; exp2 < (1 << expLength); ++exp2) {
+                        for (size_t man2 = 900; man2 < (1 << manLength); ++man2) {
+                            FP16 A(sign1, exp1, man1);
+                            FP16 B(sign2, exp2, man2);
+                            if (((A / B).GetFloat() - (A.GetFloat() / B.GetFloat())) > ((A - B).GetLastBit())) {
+                                printf("%.15f - A\t", A.GetFloat());
+                                printf("%.15f - B\n", B.GetFloat());
+                                //cout << A.GetFloat() << " - A\t" << B.GetFloat() << " - B" << endl;
+                                cout << (A / B).GetFloat() << " - my\t" << (A.GetFloat() / B.GetFloat()) << " - need" << endl;
+                                (A / B).PrintFP16_ed();
+                                cout << " - my" << endl;
+                                FP16((A.GetFloat() / B.GetFloat())).PrintFP16_ed();
+                                cout << " - need" << endl;
+                                cout << endl;
+                            }
+                        }
+                    }
+                }
+            }
+            cout << "Exp = " << exp1 << endl;
+        }
+    }
+}
+
+
+//ньютоном рапсоном полную точность
+//коррекцией добить ошибку полульпа
+
+//для денормалов:
+//сначала поделить оба, привести к (0.5 до 1), посчитать точно
+// в конце привести обратно столько, сколько поделили в начале
+//
