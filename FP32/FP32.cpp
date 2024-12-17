@@ -1353,18 +1353,18 @@ public:
 		return res;
 	}
 
-	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 6) { // l\r = y; r*y = l
+	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 18) { // l\r = y; r*y = l
 		uint64_t tmp;
 //		l &= 0x7F80'0000;
 		l <<= 32 + 7; // 16
-//		cout << endl << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
+		cout << endl << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
 
 		uint64_t currentBit = 0x8000'0000'0000'0000; // idea is to substract a one from bit. E.g, res < 0x123456 => r += curbit, res > 0x123456 => r -= curbit
-		currentBit >>= 56; // 56 bits are correct. 16 bits are zero, 1 bit is sign (0), 8 bits are exp, 23 bits are mantissa (48 by this moment), 8 bit idk
+		currentBit >>= 47; // 56 bits are correct. 16 bits are zero, 1 bit is sign (0), 8 bits are exp, 23 bits are mantissa (48 by this moment), 8 bit idk
 		for (int _ = 0; _ < iterCount; ++_) {
 //			tmp = r * y; // r, y - 64 bit
 			tmp = special_mul_32_64_64noExp(r, y); // extend tmp and l up to the 64 bit long 
-//			cout << hex << "r*y: " << tmp << " y: " << y << endl;
+			cout << hex << "r*y: " << tmp << " y: " << y << endl;
 			if (tmp < l) y += currentBit;
 			else if (tmp > l) y -= currentBit;
 			currentBit >>= 1;
@@ -1499,20 +1499,15 @@ public:
 			return res + 0x7F800000;
 		else if (eres > 0) {
 //			cout << endl << "normal branch" << endl;
-//			l = (eres << 23) + ml; // shift l here to diapason [0.5, 1). Y will recalculate automatically!!!!!
-			l = (126 << 23) + ml; // = eres - eres + 126
-//			x -= (1 << 23); //
-			uint32_t y = FP32::mul(l, x, dummy);
-			
+//			l = (eres << 23) + ml; // shift l here to diapason [0.5, 1). USUAL
+			l = (126 << 23) + ml; // FMA
+			uint32_t y = FP32::mul(l, x, dummy); // FMA
+
+//			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
 //			y = zagryadskov_iter(lCopied, rCopied, y);
 //			uint32_t y = FP32::special_mul_32_64_32rouding(l, bigx);
 // 
-//			rCopied = usub(rCopied);
-//			float df = std::fmaf(FP32(rCopied), FP32(y), FP32(lCopied));
-//			cout << hex << y << " " << df << endl;
-//			y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
-//			cout << y << endl;
-
+			
 			if ((y & 0x7FFF'FFFF) != 0x7F80'0000) {
 				r = usub(r);
 //				cout << hex << FP32(r) << " " << FP32(l) << endl;
@@ -1547,13 +1542,16 @@ public:
 		else if (eres >= -30) {
 			//			cout << endl << "subnormal branch" << endl;
 			l = ml + 0x80'0000;
-			l += 126 << 23;
+			l += 126 << 23; // FMA
 			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
-			r += (-eres + 1) << 23; //?
-			uint32_t y = FP32::mul(l, x, dummy); // y = l*x = l * 1/r
-			//			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
-			//			uint32_t y = FP32::special_mul_32_64_32rouding(l, bigx);
-			//			y = zagryadskov_iter(lCopied, rCopied, y);
+			r += (-eres + 1) << 23; //?		
+			uint32_t y = FP32::mul(l, x, dummy); // y = l*x = l * 1/r // FMA
+
+//			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
+//			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
+//			y = zagryadskov_iter(lCopied, rCopied, y);
+			
+
 			if ((y & 0x7FFF'FFFF) != 0x7F80'0000) {
 				r = usub(r);
 //				cout << hex << endl << FP32(r) << " " << FP32(l) << endl; //
@@ -1561,8 +1559,6 @@ public:
 //				cout << FP32(y) << " " << df << endl; //
 				y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
 //				cout << FP32(y) << " " << FP32(x) << endl; //
-
-
 				eres = -126 + ((y & 0x7F80'0000) >> 23);
 				
 //				cout << hex << endl << y << endl; // 0011 1111 0111 0100 1000 1001 1000 1101
@@ -1721,7 +1717,7 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 15;
+		size_t from = 0;
 
 		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980, 0x11000, 0x11000, 0x11000, 0x3c911000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
 		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x3c0e6000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11, 0x231000, 0x383f0000, 0x3c05e000, 0x80009000, 0x3c091000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
@@ -1753,8 +1749,8 @@ class Alltests {
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
-				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-//				if (f == f && res != FP32(f).data) {
+//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
+				if (f == f && res != FP32(f).data) {
 //					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
