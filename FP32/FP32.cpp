@@ -1353,14 +1353,14 @@ public:
 		return res;
 	}
 
-	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 18) { // l\r = y; r*y = l
+	static uint32_t zagryadskov_iter(uint64_t l, uint32_t r, uint64_t y, int iterCount = 5) { // l\r = y; r*y = l
 		uint64_t tmp;
 //		l &= 0x7F80'0000;
 		l <<= 32 + 7; // 16
 		cout << endl << "input: " << hex << " l: " << l << " r: " << r << " y: " << y << endl;
 
 		uint64_t currentBit = 0x8000'0000'0000'0000; // idea is to substract a one from bit. E.g, res < 0x123456 => r += curbit, res > 0x123456 => r -= curbit
-		currentBit >>= 47; // 56 bits are correct. 16 bits are zero, 1 bit is sign (0), 8 bits are exp, 23 bits are mantissa (48 by this moment), 8 bit idk
+		currentBit >>= 56; // 56 bits are correct. 16 bits are zero, 1 bit is sign (0), 8 bits are exp, 23 bits are mantissa (48 by this moment), 8 bit idk
 		for (int _ = 0; _ < iterCount; ++_) {
 //			tmp = r * y; // r, y - 64 bit
 			tmp = special_mul_32_64_64noExp(r, y); // extend tmp and l up to the 64 bit long 
@@ -1488,7 +1488,6 @@ public:
 		}
 		r = mr + (126 << 23); // diapason [0.5, 1)
 
-
 		uint32_t x = FP32::add3(0x4034b4b5, FP32::mul(0xbff0f0f1, r, dummy), dummy); // 48/17 - 32/17 * d
 		x = newton_iter2(x, r); // x = x * (2 - r*x) or x = x + x(1 - dx)
 		x = newton_iter2(x, r); // x = x * (2 - r*x)
@@ -1502,24 +1501,24 @@ public:
 //			l = (eres << 23) + ml; // shift l here to diapason [0.5, 1). USUAL
 			l = (126 << 23) + ml; // FMA
 			uint32_t y = FP32::mul(l, x, dummy); // FMA
+//			uint32_t y = FP32::special_mul_32_64_32rouding(l, bigx);
 
 //			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
-//			y = zagryadskov_iter(lCopied, rCopied, y);
-//			uint32_t y = FP32::special_mul_32_64_32rouding(l, bigx);
+//			y = zagryadskov_iter(l, r, y);
 // 
-			
+			cout << endl;
 			if ((y & 0x7FFF'FFFF) != 0x7F80'0000) {
-				r = usub(r);
-//				cout << hex << FP32(r) << " " << FP32(l) << endl;
-				float df = std::fmaf(FP32(r), FP32(y), FP32(l));
+				rCopied = usub(rCopied);
+//				cout << FP32(rCopied) << " " << FP32(lCopied) << endl;
+				float df = std::fmaf(FP32(rCopied), FP32(y), FP32(lCopied));
 //				cout << FP32(y) << " " << df << endl;
-				y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
+				y = FP32(std::fmaf(df, 1.0f/float(FP32(rCopied)), FP32(y))).data;
 //				cout << FP32(y) << " " << FP32(x) << endl;
 			}
-
 //			y -= (126 - eres) << 23; //!!!
-
+			/*
 			eres = -126 + ((y & 0x7F80'0000) >> 23) + eres;
+			int eresx = -126 + ((x & 0x7F80'0000) >> 23) + eres;
 
 			if (eres >= 0xFF)
 				y = 0xFF << 23;
@@ -1537,48 +1536,99 @@ public:
 			else
 				y = 0;
 
+			if (eresx >= 0xFF) {
+				x = 0xFF << 23;
+			}
+			else if (eresx > 0) {
+				x &= 0x807F'FFFF;
+				x += eresx << 23;
+			}
+			else if (eresx >= -23) {
+				x = (x & 0x007F'FFFF) + 0x0080'0000;
+//				cout << y << endl;  // 0000 0000 1111 0100 1000 1001 1000 1101
+				uint64_t shift = 1ull << (-eres + 1);
+//				y >>= -eres + 1;
+				x = (x >> (-eres + 1)) + ((x & (shift - 1)) > (shift >> 1)) + (((x & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+//				cout << y << endl; // 0000 0000 0111 1010 0100 0100 1100 0110
+			}
+			else
+				x = 0;
+			
+			y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
+			cout << FP32(y) << " " << FP32(x) << endl;
+			} */
 			res += uint32_t(y);
 		}
 		else if (eres >= -30) {
 			//			cout << endl << "subnormal branch" << endl;
+			int teres = eres;
 			l = ml + 0x80'0000;
 			l += 126 << 23; // FMA
 			x -= (-eres + 1) << 23; // x_exp - shift of exponent during the calculations to [0.5, 1) NO L SHIFT
-			r += (-eres + 1) << 23; //?		
+//			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
+			r += (-eres + 1) << 23; // FMA	
 			uint32_t y = FP32::mul(l, x, dummy); // y = l*x = l * 1/r // FMA
 
-//			bigx -= (uint64_t(-eres + 1) << (23 + 16)); // 16
 //			uint64_t y = FP32::special_mul_32_64_64rouding(l, bigx);
-//			y = zagryadskov_iter(lCopied, rCopied, y);
+//			y = zagryadskov_iter(l, r, y);
 			
-
+			
 			if ((y & 0x7FFF'FFFF) != 0x7F80'0000) {
 				r = usub(r);
 //				cout << hex << endl << FP32(r) << " " << FP32(l) << endl; //
 				float df = std::fmaf(FP32(r), FP32(y), FP32(l));
 //				cout << FP32(y) << " " << df << endl; //
-				y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
-//				cout << FP32(y) << " " << FP32(x) << endl; //
 				eres = -126 + ((y & 0x7F80'0000) >> 23);
-				
-//				cout << hex << endl << y << endl; // 0011 1111 0111 0100 1000 1001 1000 1101
-				if (eres >= 0xFF)
-					y = 0xFF << 23;
-				else if (eres > 0) {
-					y &= 0x807F'FFFF;
-					y += eres << 23;
-				}
-				else if (eres >= -23) {
-					y = (y & 0x007F'FFFF) + 0x0080'0000;
-//					cout << y << endl;  // 0000 0000 1111 0100 1000 1001 1000 1101
-					uint64_t shift = 1ull << (-eres + 1);
-//					y >>= -eres + 1;
-					y = (y >> (-eres + 1)) + ((y & (shift - 1)) > (shift >> 1)) + (((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
-//					cout << y << endl; // 0000 0000 0111 1010 0100 0100 1100 0110
-				}
-				else
-					y = 0;
+				int eresx = -126 + ((x & 0x7F80'0000) >> 23);
+			//}
+//			cout << hex << endl << y << endl; // 0011 1111 0111 0100 1000 1001 1000 1101
+			if (eres >= 0xFF) {
+				y = 0xFF << 23;
 			}
+			else if (eres > 0) {
+				y &= 0x807F'FFFF;
+				y += eres << 23;
+			}
+			else if (eres >= -23) {
+				y = (y & 0x007F'FFFF) + 0x0080'0000;
+//				cout << y << endl;  // 0000 0000 1111 0100 1000 1001 1000 1101
+				uint64_t shift = 1ull << (-eres + 1);
+//				y >>= -eres + 1;
+				y = (y >> (-eres + 1)) + ((y & (shift - 1)) > (shift >> 1)) + (((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+//				cout << y << endl; // 0000 0000 0111 1010 0100 0100 1100 0110
+			}
+			else
+				y = 0;
+
+			if (eresx >= 0xFF) {
+				x = 0xFF << 23;
+			}
+			else if (eresx > 0) {
+				x &= 0x807F'FFFF;
+				x += eresx << 23;
+			}
+			else if (eresx >= -23) {
+				x = (x & 0x007F'FFFF) + 0x0080'0000;
+//				cout << y << endl;  // 0000 0000 1111 0100 1000 1001 1000 1101
+				uint64_t shift = 1ull << (-eres + 1);
+//				y >>= -eres + 1;
+				x = (x >> (-eres + 1)) + ((x & (shift - 1)) > (shift >> 1)) + (((x & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+//				cout << y << endl; // 0000 0000 0111 1010 0100 0100 1100 0110
+			}
+			else
+				x = 0;
+
+			y = FP32(std::fmaf(df, FP32(x), FP32(y))).data; 
+			}
+/*			x += 7 << 23; // FMA	
+			cout << "f " << endl;
+			rCopied = usub(rCopied);
+			cout << hex << endl << FP32(rCopied) << " " << FP32(lCopied) << endl; //
+			float df = std::fmaf(FP32(rCopied), FP32(y), FP32(lCopied));
+			cout << FP32(y) << " " << df << endl; //
+			y = FP32(std::fmaf(df, FP32(x), FP32(y))).data;
+			cout << FP32(y) << " " << FP32(x) << endl; //
+			eres = -126 + ((y & 0x7F80'0000) >> 23); */
 
 			res += uint32_t(y);
 		}
@@ -1717,11 +1767,11 @@ class Alltests {
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 0;
+		size_t from = 2;
 
 		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x1980, 0x1980, 0x1980, 0x11000, 0x11000, 0x11000, 0x3c911000, 0x11000 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
 		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x3c0e6000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x27533793, 0x3eac3ed3, 0x30d69c11, 0x231000, 0x383f0000, 0x3c05e000, 0x80009000, 0x3c091000 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
-		for (size_t i = from; i < vl.size(); ++i) {
+		for (size_t i = from; i < 3; ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 			res = FP32::div2(uint32_t(vl[i]), uint32_t(vr[i]), f);
 //			res = FP32::fma3(vl[i], vr[i], 0x0, f);
