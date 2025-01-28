@@ -1415,6 +1415,8 @@ public:
 	static uint32_t div3(uint32_t l, uint32_t r, float& example) noexcept {
 		float dummy;
 		example = float(FP32(l)) / float(FP32(r)); //
+		float lCopied = FP32(l).example; //
+		float rCopied = FP32(r).example; //
 		uint32_t res = (l ^ r) & 0x8000'0000;
 		uint32_t el = l & 0x7F80'0000;
 		uint32_t er = r & 0x7F80'0000;
@@ -1496,8 +1498,8 @@ public:
 		r = FP32::usub(r);
 		eres += (y >> 23) - 126; // overflow if y >= 1
 
-		cout << FP32(l).example << " " << FP32(r).example << " " << FP32(y).example << " " << dec << FP32(FP32(l).example / FP32(r).example).data - y << hex << endl;
-		cout << dec << eres << hex << endl;
+//		cout << FP32(l).example << " " << FP32(r).example << " " << FP32(y).example << " " << dec << FP32(FP32(l).example / FP32(r).example).data - y << hex << endl;
+//		cout << dec << eres << hex << endl;
 
 		if (eres >= 255)
 			res += 0x7F800000;
@@ -1505,18 +1507,19 @@ public:
 			res += (eres << 23) + (y & 0x007F'FFFF);
 		}
 		else if (eres >= -23) { // PAGE 137, r shows the rounding
-			cout << std::bitset<32>(y) << " " << dec << eres << hex << endl;
+//			cout << std::bitset<32>(y) << " " << dec << eres << hex << endl;
 
 			y = (y & 0x007F'FFFF) + 0x0080'0000;
 			uint32_t shift = 1ull << (-eres + 1);
 
-			cout << std::bitset<32>(shift) << " " << std::bitset<32>(y & (shift - 1)) << " " << std::bitset<32>(shift >> 1) << " " << e << " " << dy << endl;
+//			cout << std::bitset<32>(shift) << " " << std::bitset<32>(y & (shift - 1)) << " " << std::bitset<32>(shift >> 1) << " " << e << " " << dy << endl;
 
 			if (e == 0x0 || ((y & (shift - 1)) != (shift >> 1))) { // round-to-near ties-to-even if theorem case or midpoint
 				y = (y >> (-eres + 1)) +
 					((y & (shift - 1)) > (shift >> 1)) +
 					(((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
 			}
+			
 			else if (dy && de || !dy && !de) { // underestimates
 				y = (y >> (-eres + 1)) + 1; // + 1
 			}
@@ -1525,6 +1528,10 @@ public:
 			}
 
 			res += y;
+			
+	/*		else {
+				res = FP32(lCopied / rCopied).data;
+			} */
 		}
 
 		return res;
