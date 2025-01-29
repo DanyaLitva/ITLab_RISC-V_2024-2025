@@ -1498,8 +1498,8 @@ public:
 		r = FP32::usub(r);
 		eres += (y >> 23) - 126; // overflow if y >= 1
 
-//		cout << FP32(l).example << " " << FP32(r).example << " " << FP32(y).example << " " << dec << FP32(FP32(l).example / FP32(r).example).data - y << hex << endl;
-//		cout << dec << eres << hex << endl;
+		cout << FP32(l).example << " " << FP32(r).example << " " << FP32(y).example << " " << dec << FP32(FP32(l).example / FP32(r).example).data - y << hex << endl;
+		cout << dec << eres << hex << endl;
 
 		if (eres >= 255)
 			res += 0x7F800000;
@@ -1507,31 +1507,156 @@ public:
 			res += (eres << 23) + (y & 0x007F'FFFF);
 		}
 		else if (eres >= -23) { // PAGE 137, r shows the rounding
-//			cout << std::bitset<32>(y) << " " << dec << eres << hex << endl;
-
+			cout << std::bitset<32>(y) << endl;
 			y = (y & 0x007F'FFFF) + 0x0080'0000;
 			uint32_t shift = 1ull << (-eres + 1);
+			cout << std::bitset<32>(shift) << " " << std::bitset<32>(y & (shift - 1)) << " " << std::bitset<32>(shift >> 1) << " " << e << " " << dy << endl;
 
-//			cout << std::bitset<32>(shift) << " " << std::bitset<32>(y & (shift - 1)) << " " << std::bitset<32>(shift >> 1) << " " << e << " " << dy << endl;
-
-			if (e == 0x0 || ((y & (shift - 1)) != (shift >> 1))) { // round-to-near ties-to-even if theorem case or midpoint
-				y = (y >> (-eres + 1)) +
+			if (e == 0x0 || ((y & (shift - 1)) != (shift >> 1))) { // round-to-nearest ties-to-even if theorem case or midpoint
+				res += (y >> (-eres + 1)) +
 					((y & (shift - 1)) > (shift >> 1)) +
 					(((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
 			}
 			
 			else if (dy && de || !dy && !de) { // underestimates
-				y = (y >> (-eres + 1)) + 1; // + 1
+				res += (y >> (-eres + 1)) + 1;
 			}
 			else if (dy && !de || !dy && de) { // overestimates
-				y = (y >> (-eres + 1)) + 0; // + 0
+				res += (y >> (-eres + 1)) + 0;
+			}
+			
+		}
+
+		return res;
+	}
+
+	static uint32_t div4(uint32_t l, uint32_t r, float& example) noexcept {
+		float dummy;
+		example = float(FP32(l)) / float(FP32(r)); //
+		uint32_t lCopied = l;
+		uint32_t rCopied = r;
+		uint32_t res = (l ^ r) & 0x8000'0000;
+		uint32_t el = l & 0x7F80'0000;
+		uint32_t er = r & 0x7F80'0000;
+		int32_t eres = 0;
+		uint64_t ml = l & 0x007F'FFFF;
+		uint64_t mr = r & 0x007F'FFFF;
+
+
+		if ((el == 0x7F800000) || (er == 0x7F800000) || (r == 0) || (r == 0x80000000) || (l == 0) || (l == 0x80000000)) { // nan and inf
+			if (el == 0x7F800000) { // left is inf or nan
+				if (ml != 0) // left is nan
+					return res + (l & 0x7FFFFFFF);
+				else if (er == 0x7F800000) // right is inf or nan
+					return res + 0x7F800001; // inf / inf = nan
+				else
+					return res + (l & 0x7FFFFFFF); // inf / finite = inf
+			}
+			if (er == 0x7F800000) { // right is inf or nan
+				if (mr != 0) // is nan
+					return res + (r & 0x7FFFFFFF);
+				else // is inf
+					return res; // zero
 			}
 
+			if ((r == 0) || (r == 0x80000000)) { // right is zero
+				if ((l == 0) || (l == 0x80000000)) // left is zero
+					return res | 0x7F800001;
+				else
+					return res | 0x7F800000;
+			}
+
+			if ((l == 0) || (l == 0x80000000)) {
+				return res;
+			}
+		}
+
+
+		eres = (el >> 23) + 126; // diapason [1, 2)
+		if (er == 0) {
+			--eres; // er += 1 if right is subnormal
+			while (mr < 0x80'0000) { // right to normal
+				++eres; // --er
+				mr <<= 1;
+			}
+			mr -= 0x80'0000;
+		}
+		eres -= (er >> 23);
+		if (el == 0) {
+			++eres; // el += 1 if left is subnormal
+			while (ml < 0x80'0000) { // left to normal
+				--eres; // --el
+				ml <<= 1;
+			}
+			ml -= 0x80'0000;
+		}
+		r = mr + (127ul << 23); // diapason [1, 2)
+		l = ml + (127ul << 23);
+
+
+//		uint32_t x = FP32::fma3(0xbff0f0f1ul, r, 0x4034b4b5ul, dummy); // 48/17 - 32/17 * d. 0 iteration. x = 1 / r
+		uint32_t x = FP32::fma3(0xbef0f0f1ul, r, 0x3fb4b4b5ul, dummy); // 24/17 - 8/17 * d.
+		r = FP32::usub(r);
+		uint32_t e;
+
+		e = FP32::fma3(r, x, 0x3F800000ul, dummy); // 1 iteration
+		x = FP32::fma3(x, e, x, dummy);
+		e = FP32::fma3(r, x, 0x3F800000ul, dummy); // 2 iteration
+		x = FP32::fma3(x, e, x, dummy);
+		e = FP32::fma3(r, x, 0x3F800000ul, dummy); // 3 iteration AND RN(1/a) (EXCEPT FOR UNTEGRAL SIGNIFICAND 11...11)
+		x = FP32::fma3(x, e, x, dummy);
+
+		uint32_t y = FP32::mul3(l, x, dummy); // Probably, 1 ulp error. Testing required. y = l / r
+		e = FP32::fma3(r, y, l, dummy); // Theorem 4.16 page 132
+		uint32_t tmpy = FP32::fma3(e, x, y, dummy);
+		bool dy = y != tmpy; // for possible double-roundings
+		bool de = (e >> 31) == 0x1;
+//		y = tmpy;
+
+		r = FP32::usub(r);
+		eres += (tmpy >> 23) - 126; // overflow if y >= 1
+
+		cout << FP32(l).example << " " << FP32(r).example << " " << FP32(tmpy).example << " " << dec << FP32(FP32(l).example / FP32(r).example).data - tmpy << hex << endl;
+		cout << dec << eres << hex << endl;
+
+		if (eres >= 255)
+			res += 0x7F800000;
+		else if (eres > 0) {
+			y = tmpy;
+			res += (eres << 23) + (y & 0x007F'FFFF);
+		}
+		else if (eres >= -23) { // PAGE 137, r shows the rounding
+
+			x = (x & 0x007F'FFFF) + 0x0080'0000;
+			y = (y & 0x007F'FFFF) + 0x0080'0000;
+			uint32_t shift = 1ull << (-eres + 1);
+			x = (x >> (-eres + 1));
+			y = (y >> (-eres + 1));
+
+			e = FP32::fma3(rCopied, y, lCopied, dummy);
+			y = FP32::fma3(e, x, y, dummy);
+			cout << "e: " << e << endl;
+
 			res += y;
-			
-	/*		else {
-				res = FP32(lCopied / rCopied).data;
-			} */
+			/*
+			cout << std::bitset<32>(y) << endl;
+			y = (y & 0x007F'FFFF) + 0x0080'0000;
+			uint32_t shift = 1ull << (-eres + 1);
+			cout << std::bitset<32>(shift) << " " << std::bitset<32>(y & (shift - 1)) << " " << std::bitset<32>(shift >> 1) << " " << e << " " << dy << endl;
+
+			if (e == 0x0 || ((y & (shift - 1)) != (shift >> 1))) { // round-to-nearest ties-to-even if theorem case or midpoint
+				res += (y >> (-eres + 1)) +
+					((y & (shift - 1)) > (shift >> 1)) +
+					(((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+			}
+
+			else if (dy && de || !dy && !de) { // underestimates
+				res += (y >> (-eres + 1)) + 1;
+			}
+			else if (dy && !de || !dy && de) { // overestimates
+				res += (y >> (-eres + 1)) + 0;
+			}
+			*/
 		}
 
 		return res;
@@ -1670,7 +1795,7 @@ public:
 		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x3c0e6000, 0x87ff, 0x30d69c11, 0x3a4c4bdc, 0x9ea35ab1, 0xbc7fee96 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
-			res = FP32::div3(uint32_t(vl[i]), uint32_t(vr[i]), f);
+			res = FP32::div4(uint32_t(vl[i]), uint32_t(vr[i]), f);
 //						res = FP32::fma3(vl[i], vr[i], 0x0, f);
 			if (f == f && res != FP32(f).data) {
 				cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
