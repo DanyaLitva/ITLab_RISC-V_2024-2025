@@ -635,10 +635,10 @@ public:
 
 	static uint32_t fma3(uint32_t a, uint32_t b, uint32_t c, float& example) { // a*b + c
 
-		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
+//		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
 
 		float dummy; //
-		bool coutflag = true; //
+		bool coutflag = false; //
 		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
 		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
 		example = std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example); //
@@ -653,16 +653,8 @@ public:
 		int64_t mres;
 
 		// NAN AND INF
-		if ((ea == 0x7F800000) || (eb == 0x7F800000)) { // nan and inf checking for mul
-			if (ma != 0 && eb == 0x7F800000) // if left is nan
-				return res + (a & 0x7FFFFFFF);
-			else if (eb == 0x7F800000) // if right is inf or nan
-				return res + (b & 0x7FFFFFFF);
-			return res + (a & 0x7FFFFFFF);
-		}
-		if (ec == 0x7F800000) { // inf - inf error(((
-			if (mc != 0) return c;
-			else return c; // inf - inf
+		if ((ea == 0x7F800000) || (eb == 0x7F800000) || (ec == 0x7F800000)) {
+			return FP32::add3(FP32::mul3(a, b, dummy), c, dummy);
 		}
 
 		// MULTIPLYING
@@ -687,7 +679,7 @@ public:
 
 		// ADDING PREPARATIONS
 		mc = (mc + (uint64_t(ec > 0) << 23)) << 24;
-		mres *= -(2 * int32_t(res >> 31) - 1);
+		mres *= -(2 * int32_t(res >> 31) - 1); // make them signed
 		mc *= -(2 * int32_t(c >> 31) - 1);
 		eb = eres;
 		ec >>= 23; // ec > 0??
@@ -736,8 +728,9 @@ public:
 			return res + 0x7F800000;
 		}
 		res += eres << 23; // calcuating result
-		if (eres > 0)
+		if (eres > 0) {
 			return res + mres - 0x00800000;
+		}
 		else
 			return res + mres;
 
@@ -1633,7 +1626,7 @@ public:
 			x = (x >> (-eres + 1));
 			y = (y >> (-eres + 1));
 
-			e = FP32::fma3(rCopied, y, lCopied, dummy);
+//			e = FP32::fma3(rCopied, y, lCopied, dummy);
 			y = FP32::fma3(e, x, y, dummy);
 			cout << "e: " << e << endl;
 
@@ -1795,8 +1788,8 @@ public:
 		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x3c0e6000, 0x87ff, 0x30d69c11, 0x3a4c4bdc, 0x9ea35ab1, 0xbc7fee96 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
-			res = FP32::div4(uint32_t(vl[i]), uint32_t(vr[i]), f);
-//						res = FP32::fma3(vl[i], vr[i], 0x0, f);
+//			res = FP32::div4(uint32_t(vl[i]), uint32_t(vr[i]), f);
+			res = FP32::fma3(vl[i], vr[i], 0x0, f);
 			if (f == f && res != FP32(f).data) {
 				cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
 				cout << f << " expected, " << float(FP32(res)) << " instead\n";
