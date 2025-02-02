@@ -638,7 +638,7 @@ public:
 //		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
 
 		float dummy; //
-		bool coutflag = false; //
+		bool coutflag = true; //
 		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
 		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
 		example = std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example); //
@@ -662,26 +662,32 @@ public:
 		mres = (((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0)))) << 1; // calculating 24 bit extended mantissa
 		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << endl; //
 
+		
 		// MUL RESULT TO NORMAL
-		while ((mres != 0) && (mres < 0x8000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^24. Can it be speeded up? // >= 0
-			eres -= 1;
-			mres <<= 1;
+		if (mres == 0) { 
+			eres = 0;
 		}
-		while (mres >= 0x1'0000'0000'0000) { // mres is greater than 2^24 (2^?). Can it be speeded up?
-			eres += 1;
-			mres >>= 1; // just 1? (eres > 0) ROUNDING!!!
-		} /*
-		if (mres >= 0x8000'0000'0000 && eres <= 0) { // new
-			mres >>= 1;
-		}*/
+		else {
+			while ((mres < 0x8000'0000'0000) && (eres > 0)) { // mres has no leading bit 2^24. Can it be speeded up? // >= 0
+				eres -= 1;
+				mres <<= 1;
+			}
+			while (mres >= 0x1'0000'0000'0000) { // mres is greater than 2^24 (2^?). Can it be speeded up?
+				eres += 1;
+				mres >>= 1; // just 1? (eres > 0) ROUNDING!!!
+			}
+		}
+		
+		
 		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << ", true: " << FP32::mul3(a, b, dummy) << endl; //
 
 		// ADDING PREPARATIONS
-		mc = (mc + (uint64_t(ec > 0) << 23)) << 24;
+		mc = (mc + (uint64_t(ec > 0) << 23)) << 24; // << 24 ??? 25????
 		mres *= -(2 * int32_t(res >> 31) - 1); // make them signed
 		mc *= -(2 * int32_t(c >> 31) - 1);
 		eb = eres;
 		ec >>= 23; // ec > 0??
+//		ec += (ec == 0); // WHAT???
 		if (coutflag) cout << "mres: " << mres << ", eb: " << eb << endl; //
 		if (coutflag) cout << "mc: " << mc << ", ec: " << ec << endl; //
 
@@ -691,6 +697,7 @@ public:
 			eres = eb;
 			if (eb - ec >= 64) mres = mres; // 25
 			else { 
+				mresLShift = mc & ((1ull << (eb - ec)) - 1);
 				mres = mres + (mc >> (eb - ec));
 			}
 		}
@@ -709,14 +716,16 @@ public:
 		if (coutflag) cout << "mres: " << mres << ", mresLShift: " << mresLShift << ", eres: " << dec << eres << hex << endl; //
 
 		// ADD RES NORMALIZATION
-		if (mres >= 0x1'0000'0000'0000) { // if mres is greater than a 2^23 (2^48) // make a non-if code
-			mres >>= (eres > 0); // subnormals ROUNDING!!!
+		if (mres >= 0x1'0000'0000'0000) { // if mres is greater than a 2^23 (2^48) // make a non-if code 0x1'0000'0000'0000
+//			mres >>= (eres > 0); // subnormals ROUNDING!!!
+			mres >>= 1;
 			++eres;
 		}
 		else if (mres != 0) {
-			while (mres < 0x8000'0000'0000 && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+			while (mres < 0x0'8000'0000'0000 && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0 0x8000'0000'0000
 				--eres;
-				mres <<= (eres > 0); // subnormals
+//				mres <<= (eres > 0); // subnormals
+				mres <<= 1;
 			}
 		}
 		else {
@@ -739,6 +748,7 @@ public:
 		}
 		else if (eres > 0) { // use here all your saved stuff (mresLShift)
 			uint32_t r1 = ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0xFF'FFFF) == 0x80'0000) * (mresLShift != 0x0) * (!sign); // !sign because of negative roudings
+//			uint32_t r1 = ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0xFF'FFFF) == 0x80'0000) * (mresLShift != 0x0);
 			uint32_t r2 = ((mres & 0x1FF'FFFF) == 0x180'0000) * (mresLShift == 0x0);
 			mres = (mres >> 24) + r1 + r2;
 			/*
@@ -749,10 +759,13 @@ public:
 			return res + mres - 0x0080'0000 + (eres << 23);
 		}
 		else if (eres >= -23) {
-			uint64_t shift = 1ull << (24 - eres + 1);
+//			uint64_t shift = 1ull << (24 - eres + 1);
+			uint64_t shift = 1ull << (24 - eres);
 			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0) * (!sign); // !sign because of negative roudings
+//			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0);
 			uint32_t r2 = (((mres & ((shift << 1) - 1))) == (shift + (shift >> 1))) * (mresLShift == 0x0);
-			return res + (mres >> (24 - eres + 1)) + r1 + r2;
+//			return res + (mres >> (24 - eres + 1)) + r1 + r2;
+			return res + (mres >> (24 - eres)) + r1 + r2;
 		}
 		else {
 			return res;
@@ -1300,7 +1313,7 @@ public:
 		
 		uint64_t y = FP32::special_mul2(l, bigx); // y = l * x = l / r
 		y = zagryadskov_iter(l, r, y); // recalculate, because y * r = l. IF DOESNT WORK, MAKE Y BIGGER (or dont)
-		eres += (y >> 23 + 16) - 126; // + 16 because iter returns 16 bit longer
+		eres += (y >> (23 + 16)) - 126; // + 16 because iter returns 16 bit longer
 
 		uint32_t tmpy = (y >> 16) + ((y & 0xFFFF) > 0x8000) + ((y & 0x1'FFFF) == 0x1'8000);
 		cout << FP32(l).example << " " << FP32(r).example << " " << FP32(tmpy).example << " " << dec << FP32(FP32(l).example / FP32(r).example).data - tmpy << hex << endl;
@@ -1749,12 +1762,12 @@ public:
 		float f;
 		size_t from = 0;
 
-		vector<uint32_t> vl = { 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x11000, 0x1980, 0x1980, 0x1980, 0x6f90e, 0xff02, 0x1000102, 0xcdb31d0 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x3c0e6000, 0x87ff, 0x30d69c11, 0x3a4c4bdc, 0x9ea35ab1, 0xbc7fee96, 0x7f000878, 0xaa2f2fd3 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0x0, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x11000, 0x1980, 0x1980, 0x1980, 0x6f90e, 0xff02, 0x1000102, 0xcdb31d0, 0x9f617, 0x2a55e1c0, 0x1cdf46aa }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0x0, 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x3c0e6000, 0x87ff, 0x30d69c11, 0x3a4c4bdc, 0x9ea35ab1, 0xbc7fee96, 0x7f000878, 0xaa2f2fd3, 0x413e5b28, 0xa46fe324, 0xa9ffa000  }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 //			res = FP32::div4(uint32_t(vl[i]), uint32_t(vr[i]), f);
-			res = FP32::fma3(vl[i], vr[i], 0x0, f);
+			res = FP32::fma3(vl[i], vr[i], 0xaa002ul, f); // 0xaa002ul
 			if (f == f && res != FP32(f).data) {
 				if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
 				cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
@@ -1772,9 +1785,9 @@ public:
 
 		//		cout << "Add\n";
 
-		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 69632)
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 65282) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69631) {
+		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 696322)
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 652823) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 696314) {
 				//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
