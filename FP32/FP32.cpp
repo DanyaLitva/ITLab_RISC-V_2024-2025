@@ -658,17 +658,18 @@ public:
 		}
 		// MULTIPLYING
 		eres = (ea >> 23) + (eb >> 23) + (ea == 0) + (eb == 0); // calculating exponent NEW!!!
+//		eres = (ea >> 23) + (eb >> 23);
 		eres -= 127;
 		mres = (((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0)))) << 1; // calculating 24 bit extended mantissa
+//		mres = ((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0))); // calculating 24 bit extended mantissa
 		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << endl; //
-
 		
 		// MUL RESULT TO NORMAL
 		if (mres == 0) { 
 			eres = 0;
 		}
 		else {
-			while ((mres < 0x8000'0000'0000) && (eres > 0)) { // mres has no leading bit 2^24. Can it be speeded up? // >= 0
+			while ((mres < 0x0'8000'0000'0000) && (eres > 0)) { // mres has no leading bit 2^24. Can it be speeded up? // >= 0
 				eres -= 1;
 				mres <<= 1;
 			}
@@ -678,11 +679,10 @@ public:
 			}
 		}
 		
-		
 		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << ", true: " << FP32::mul3(a, b, dummy) << endl; //
 
 		// ADDING PREPARATIONS
-		mc = (mc + (uint64_t(ec > 0) << 23)) << 24; // << 24 ??? 25????
+		mc = (mc + (int64_t(ec > 0) << 23)) << 24; // << 24 ??? 25????
 		mres *= -(2 * int32_t(res >> 31) - 1); // make them signed
 		mc *= -(2 * int32_t(c >> 31) - 1);
 		eb = eres;
@@ -693,6 +693,8 @@ public:
 
 		// ADDING
 		uint64_t mresLShift = 0;
+		ec += (ec == 0);
+		ec -= (eb <= 0);
 		if (eb > ec) { // calulate exponent and mantissa making exponents equal each other
 			eres = eb;
 			if (eb - ec >= 64) mres = mres; // 25
