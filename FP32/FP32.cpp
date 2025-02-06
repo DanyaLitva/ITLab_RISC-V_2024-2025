@@ -668,7 +668,9 @@ public:
 		if (mres == 0) { 
 			eres = 0;
 		}
-		else {
+		eres -= (eres == 0);
+		/*
+		else { // идея сделать ерез не меньше нуля чтобы было как в сложении 1в1
 			while ((mres < 0x0'8000'0000'0000) && (eres > 0)) { // mres has no leading bit 2^24. Can it be speeded up? // >= 0
 				eres -= 1;
 				mres <<= 1;
@@ -677,7 +679,7 @@ public:
 				eres += 1;
 				mres >>= 1; // just 1? (eres > 0) ROUNDING!!!
 			}
-		}
+		}*/
 		
 		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << ", true: " << FP32::mul3(a, b, dummy) << endl; //
 
@@ -687,14 +689,15 @@ public:
 		mc *= -(2 * int32_t(c >> 31) - 1);
 		eb = eres;
 		ec >>= 23; // ec > 0??
+		bool ecDenormal = (ec == 0);
+		ec += ecDenormal;
 //		ec += (ec == 0); // WHAT???
+//		ec += (ec == 0) * (eb > 0);	
 		if (coutflag) cout << "mres: " << mres << ", eb: " << eb << endl; //
 		if (coutflag) cout << "mc: " << mc << ", ec: " << ec << endl; //
 
 		// ADDING
 		uint64_t mresLShift = 0;
-		ec += (ec == 0);
-		ec -= (eb <= 0);
 		if (eb > ec) { // calulate exponent and mantissa making exponents equal each other
 			eres = eb;
 			if (eb - ec >= 64) mres = mres; // 25
@@ -704,7 +707,7 @@ public:
 			}
 		}
 		else {
-			eres = ec;
+			eres = ec - ecDenormal;
 			if (ec - eb >= 64) mres = mc;
 			else {
 				mresLShift = mres & ((1ull << (ec - eb)) - 1); // mresLShift is signed, you should calculate this
@@ -719,15 +722,15 @@ public:
 
 		// ADD RES NORMALIZATION
 		if (mres >= 0x1'0000'0000'0000) { // if mres is greater than a 2^23 (2^48) // make a non-if code 0x1'0000'0000'0000
-//			mres >>= (eres > 0); // subnormals ROUNDING!!!
-			mres >>= 1;
+			mres >>= (eres > 0); // subnormals ROUNDING!!!
+//			mres >>= 1;
 			++eres;
 		}
-		else if (mres != 0) {
-			while (mres < 0x0'8000'0000'0000 && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0 0x8000'0000'0000
+		else if (mres != 0) { 
+			while ((mres < 0x0'8000'0000'0000) && (eres > 0)) { // if mres is less than a 2^23 (2^24) // can add mres == 0 0x8000'0000'0000
 				--eres;
-//				mres <<= (eres > 0); // subnormals
-				mres <<= 1;
+				mres <<= (eres > 0); // subnormals
+//				mres <<= 1;
 			}
 		}
 		else {
