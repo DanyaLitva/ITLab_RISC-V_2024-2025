@@ -638,8 +638,8 @@ public:
 //		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
 
 		float dummy; //
-//		bool coutflag = false; //
-		bool coutflag = true; //
+		bool coutflag = false; //
+//		bool coutflag = true; //
 		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
 		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
 		example = std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example); //
@@ -699,12 +699,14 @@ public:
 		// ADDING
 		uint64_t mresLShift = 0;
 		uint8_t LShift = 0;
+		bool mresLShiftSign = 0;
 		if (eb >= ec) { // calulate exponent and mantissa making exponents equal each other
 			eres = eb;
 			if (eb - ec >= 64) mres = mres; // 25
 			else { 
 				LShift = eb - ec;
 				mresLShift = mc & ((1ull << (eb - ec)) - 1);
+				mresLShiftSign = (mc < 0);
 				mres = mres + (mc >> (eb - ec));
 			}
 		}
@@ -715,12 +717,13 @@ public:
 			else {
 				LShift = ec - eb;
 				mresLShift = mres & ((1ull << (ec - eb)) - 1); // mresLShift is signed, you should calculate this
+				mresLShiftSign = (mres < 0);
 				mres = mc + (mres >> (ec - eb)); // ERROR! NO ROUNDING PLEASE
 			}
 		}
 		if (coutflag) cout << "mres: " << mres << ", mresLShift: " << mresLShift << ", eres: " << dec << eres << hex << endl; //
 		res = 0x80000000 * (mres < 0); // creating res sign
-		uint32_t sign = (mres < 0);
+		bool resSign = (mres < 0);
 		mres *= -(2 * (mres < 0) - 1); // abs of mres
 		if (coutflag) cout << "mres: " << mres << ", mresLShift: " << mresLShift << ", eres: " << dec << eres << hex << endl; //
 
@@ -767,12 +770,13 @@ public:
 		}
 		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << endl; //
 		*/
+		// ЗНАК НАДО УЧЕСТЬ ПО-ДРУГОМУ ТК САМО ЧИСЛО И ОСТАТОК МОГУТ БЫТЬ КАК ОДНОГО ТАК И РАЗНЫХ ЗНАКОВ
 
 		if (eres >= 0xFF) { // in inf
 			return res + 0x7F80'0000;
 		}
 		else if (eres > 0) { // use here all your saved stuff (mresLShift)
-			uint32_t r1 = ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0xFF'FFFF) == 0x80'0000) * (mresLShift != 0x0) * (!sign); // !sign because of negative roudings
+			uint32_t r1 = ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0xFF'FFFF) == 0x80'0000) * (mresLShift != 0x0) * (resSign == mresLShiftSign); // !sign because of negative roudings
 //			uint32_t r1 = ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0xFF'FFFF) == 0x80'0000) * (mresLShift != 0x0);
 			uint32_t r2 = ((mres & 0x1FF'FFFF) == 0x180'0000) * (mresLShift == 0x0);
 			mres = (mres >> 24) + r1 + r2;
@@ -786,7 +790,7 @@ public:
 		else if (eres >= -23) {
 //			uint64_t shift = 1ull << (24 - eres + 1);
 			uint64_t shift = 1ull << (24 - eres);
-			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0) * (!sign); // !sign because of negative roudings
+			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0) * (resSign == mresLShiftSign); // !sign because of negative roudings
 //			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0);
 			uint32_t r2 = (((mres & ((shift << 1) - 1))) == (shift + (shift >> 1))) * (mresLShift == 0x0);
 //			return res + (mres >> (24 - eres + 1)) + r1 + r2;
