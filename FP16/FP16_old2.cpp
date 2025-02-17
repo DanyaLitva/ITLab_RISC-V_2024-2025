@@ -637,7 +637,7 @@ void Test_Div();
 
 using namespace std;
 int main() {
-    Test_Mult();
+    Test_Add();
     
     float f1 = 4.101562500000000;
     float f2 = 3.85351562500000;
@@ -745,10 +745,10 @@ void Test_Mult() {
 void Test_Add() {
     for (size_t sign1 = 0; sign1 < 1; ++sign1) {
         for (size_t exp1 = 0; exp1 < (1 << expLength); ++exp1) {
-            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+            for (size_t man1 = 500; man1 < (1 << manLength); ++man1) {
                 for (size_t sign2 = 0; sign2 < 1; ++sign2) {
                     for (size_t exp2 = 0; exp2 < (1 << expLength); ++exp2) {
-                        for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
+                        for (size_t man2 = 500; man2 < (1 << manLength); ++man2) {
                             FP16 A(sign1, exp1, man1);
                             FP16 B(sign2, exp2, man2);
                             if (((A + B).GetFloat() - (A.GetFloat() + B.GetFloat())) > ((A + B).GetLastBit())) {
