@@ -894,7 +894,7 @@ public:
 				bigtmp <<= 64;
 				bigmres <<= 64;
 
-				bigmres = bigmres + (bigtmp >> (eb - ec));
+				bigmres = bigmres + (bigtmp >> (ec - eb));
 			}
 		}
 		if (coutflag) cout << "mres: " << bigmres << ", eres: " << dec << eres << hex << endl; //
