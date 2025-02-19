@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <string>
 #include <fstream>
+#include <boost/multiprecision/cpp_int.hpp>
 #define FP_FAST_FMAF
 
 using namespace std;
@@ -772,7 +773,7 @@ public:
 		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << endl; //
 		*/
 		// ЗНАК НАДО УЧЕСТЬ ПО-ДРУГОМУ ТК САМО ЧИСЛО И ОСТАТОК МОГУТ БЫТЬ КАК ОДНОГО ТАК И РАЗНЫХ ЗНАКОВ
-		mresLShiftSign = false;
+//		mresLShiftSign = true;
 
 		if (eres >= 0xFF) { // in inf
 			return res + 0x7F80'0000;
@@ -797,6 +798,185 @@ public:
 			uint32_t r2 = (((mres & ((shift << 1) - 1))) == (shift + (shift >> 1))) * (mresLShift == 0x0);
 //			return res + (mres >> (24 - eres + 1)) + r1 + r2;
 			return res + (mres >> (24 - eres)) + r1 + r2;
+		}
+		else {
+			return res;
+		}
+		return res;
+	}
+
+	static uint32_t fma4(uint32_t a, uint32_t b, uint32_t c, float& example) { // a*b + c
+
+		//		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
+
+		float dummy; //
+		//		bool coutflag = false; //
+		bool coutflag = true; //
+		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
+		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
+		example = std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example); //
+		uint32_t res = (a ^ b) & 0x80000000;
+		int32_t ea = a & 0x7F800000;
+		int32_t eb = b & 0x7F800000;
+		int32_t ec = c & 0x7F800000;
+		int32_t eres;
+		uint64_t ma = a & 0x007FFFFF;
+		uint64_t mb = b & 0x007FFFFF;
+		int64_t mc = c & 0x007FFFFF;
+		int64_t mres;
+
+		// NAN AND INF
+		if ((ea == 0x7F800000) || (eb == 0x7F800000) || (ec == 0x7F800000)) {
+			return FP32::add3(FP32::mul3(a, b, dummy), c, dummy);
+		}
+		// MULTIPLYING
+		eres = (ea >> 23) + (eb >> 23) + (ea == 0) + (eb == 0); // calculating exponent NEW!!!
+		//		eres = (ea >> 23) + (eb >> 23);
+		eres -= 127;
+		mres = (((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0)))) << 1; // calculating 24 bit extended mantissa
+		//		mres = ((ma + 0x00800000 * (ea > 0))) * ((mb + 0x00800000 * (eb > 0))); // calculating 24 bit extended mantissa
+		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << endl; //
+
+		// MUL RESULT TO NORMAL
+		if (mres == 0) {
+			eres = 0;
+		}
+		//		eres -= (eres == 0);
+				/*
+				else { // идея сделать ерез не меньше нуля чтобы было как в сложении 1в1
+					while ((mres < 0x0'8000'0000'0000) && (eres > 0)) { // mres has no leading bit 2^24. Can it be speeded up? // >= 0
+						eres -= 1;
+						mres <<= 1;
+					}
+					while (mres >= 0x1'0000'0000'0000) { // mres is greater than 2^24 (2^?). Can it be speeded up?
+						eres += 1;
+						mres >>= 1; // just 1? (eres > 0) ROUNDING!!!
+					}
+				}*/
+
+		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << ", true: " << FP32::mul3(a, b, dummy) << endl; //
+
+		// ADDING PREPARATIONS
+		mc = (mc + (int64_t(ec > 0) << 23)) << 24; // << 24 ??? 25????
+		mres *= -(2 * int32_t(res >> 31) - 1); // make them signed
+		mc *= -(2 * int32_t(c >> 31) - 1);
+		eb = eres;
+		ec >>= 23; // ec > 0??
+		bool ecDenormal = (ec == 0);
+		//		ecDenormal = 0;
+		ec += ecDenormal;
+		if (coutflag) cout << "mres: " << mres << ", eb: " << eb << endl; //
+		if (coutflag) cout << "mc: " << mc << ", ec: " << ec << endl; //
+
+		// ADDING
+		boost::multiprecision::cpp_int bigtmp;
+		boost::multiprecision::cpp_int bigmres;
+		bool mresLShiftSign = 0;
+		if (eb >= ec) { // calulate exponent and mantissa making exponents equal each other
+			eres = eb;
+			if (eb - ec >= 64) mres = mres; // 25
+			else {
+				bigtmp = mc;
+				bigmres = mres;
+				bigtmp <<= 64;
+				bigmres <<= 64;
+				
+				bigmres = bigmres + (bigtmp >> (eb - ec));
+			}
+		}
+		else {
+			//			eres = ec - ecDenormal;
+			eres = ec;
+			if (ec - eb >= 64) mres = mc;
+			else {
+				bigtmp = mc;
+				bigmres = mres;
+				bigtmp <<= 64;
+				bigmres <<= 64;
+
+				bigmres = bigmres + (bigtmp >> (eb - ec));
+			}
+		}
+		if (coutflag) cout << "mres: " << bigmres << ", eres: " << dec << eres << hex << endl; //
+		res = 0x80000000 * (bigmres < 0); // creating res sign
+		bool resSign = (bigmres < 0);
+		bigmres *= -(2 * (bigmres < 0) - 1); // abs of mres
+		if (coutflag) cout << "mres: " << bigmres << ", eres: " << dec << eres << hex << endl; //
+
+		// ADD RES NORMALIZATION
+
+		bigtmp = 0x1'0000'0000'0000;
+		bigtmp <<= 64;
+		if (bigmres >= bigtmp) { // if mres is greater than a 2^23 (2^48) // make a non-if code 0x1'0000'0000'0000
+			if ((bigmres >> (48 + 64)) == 2) {
+				bigmres >>= 2;
+				eres += 2;
+			}
+			else {
+				bigmres >>= 1;
+				eres += 1;
+			}
+			/*
+//			mres >>= (eres > 0); // subnormals ROUNDING!!!
+//			mres >>= (eres != 0);
+			mres >>= 1; // ROUNDING!!!
+			++eres; */
+		}
+		else if (bigmres != 0) {
+			bigtmp = 0x8000'0000'0000;
+			bigtmp <<= 64;
+			while ((bigmres < bigtmp) && (eres > 0)) { // if mres is less than a 2^23 (2^24) // can add mres == 0 0x8000'0000'0000
+				--eres;
+				bigmres <<= (eres > 0); // subnormals
+			}
+		}
+		else {
+			eres = 0;
+		}
+		if (coutflag) cout << "mres: " << bigmres << ", eres: " << dec << eres << hex << endl; //
+
+		// ROUNDING
+		/*
+		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored
+		if (mres >= 0x0100'0000) { // mres is greater than 2^23 // add this into >= 2^48
+			mres >>= (eres > 0); // subnormals
+			++eres;
+		}
+		if (coutflag) cout << "mres: " << mres << ", eres: " << dec << eres << hex << endl; //
+		*/
+		// ЗНАК НАДО УЧЕСТЬ ПО-ДРУГОМУ ТК САМО ЧИСЛО И ОСТАТОК МОГУТ БЫТЬ КАК ОДНОГО ТАК И РАЗНЫХ ЗНАКОВ
+
+		if (eres >= 0xFF) { // in inf
+			return res + 0x7F80'0000;
+		}
+		else if (eres > 0) { // use here all your saved stuff (mresLShift)
+			boost::multiprecision::cpp_int bigtmp2;
+			bigtmp = 0xFF'FFFF;
+			bigtmp2 = 0x80'0000;
+			bigtmp <<= 64;
+			bigtmp2 <<= 64;
+			uint32_t r1 = ((bigmres & bigtmp) > bigtmp2) + ((bigmres & bigtmp) == bigtmp2);
+
+			bigtmp = 0x1FF'FFFF;
+			bigtmp2 = 0x180'0000;
+			bigtmp <<= 64;
+			bigtmp2 <<= 64;
+			uint32_t r2 = ((bigmres & bigtmp) == bigtmp2);
+			bigmres = (bigmres >> (24 + 64)) + r1 + r2;
+			/*
+			if (mres >= 0x0100'0000) { // mres is greater than 2^23 // add this into >= 2^48
+				mres >>= 1;
+				++eres;
+			} */ // potential overflow
+			return res + bigmres.convert_to<uint32_t>() - 0x0080'0000 + (eres << 23);
+		}
+		else if (eres >= -23) {
+			//			uint64_t shift = 1ull << (24 - eres + 1);
+			boost::multiprecision::cpp_int shift = 1ull << (24 - eres);
+			shift <<= 64;
+			uint32_t r1 = ((bigmres & (shift - 1)) > (shift >> 1)) + ((bigmres & (shift - 1)) == (shift >> 1));
+			uint32_t r2 = (((bigmres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+			return res + (bigmres.convert_to<uint32_t>() >> (24 - eres)) + r1 + r2;
 		}
 		else {
 			return res;
@@ -1798,7 +1978,7 @@ public:
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 //			res = FP32::div4(uint32_t(vl[i]), uint32_t(vr[i]), f);
-			res = FP32::fma3(vl[i], vr[i], 0x4db20ea, f); // 0x0, 0xaa002, 4db20ea, 1fe006
+			res = FP32::fma4(vl[i], vr[i], 0x4db20ea, f); // 0x0, 0xaa002, 4db20ea, 1fe006
 			if (f == f && res != FP32(f).data) {
 				if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
 				cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
@@ -1824,7 +2004,7 @@ public:
 				//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
-								res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
+								res = FP32::fma4(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
 				//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
 				if (f == f && res != FP32(f).data) {
 					if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
