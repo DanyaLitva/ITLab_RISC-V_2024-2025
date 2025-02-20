@@ -640,8 +640,8 @@ public:
 //		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
 
 		float dummy; //
-//		bool coutflag = false; //
-		bool coutflag = true; //
+		bool coutflag = false; //
+//		bool coutflag = true; //
 		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
 		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
 		example = std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example); //
@@ -874,7 +874,10 @@ public:
 		bool mresLShiftSign = 0;
 		if (eb >= ec) { // calulate exponent and mantissa making exponents equal each other
 			eres = eb;
-			if (eb - ec >= 64) mres = mres; // 25
+			if (eb - ec >= 64) {
+				bigmres = mres; // 25
+				bigmres <<= 64;
+			}
 			else {
 				bigtmp = mc;
 				bigmres = mres;
@@ -887,7 +890,10 @@ public:
 		else {
 			//			eres = ec - ecDenormal;
 			eres = ec;
-			if (ec - eb >= 64) mres = mc;
+			if (ec - eb >= 64) {
+				bigmres = mc;
+				bigmres <<= 64;
+			}
 			else {
 				bigtmp = mc;
 				bigmres = mres;
@@ -949,7 +955,12 @@ public:
 		if (eres >= 0xFF) { // in inf
 			return res + 0x7F80'0000;
 		}
-		else if (eres > 0) { // use here all your saved stuff (mresLShift)
+		else if (eres > 0) { // use here all your saved stuff (mresLShift) 
+
+
+			// КРИТИЧЕСКИЙ БАГ В ОКРУГЛЕНИИ !!!!!!!!!
+
+
 			boost::multiprecision::cpp_int bigtmp2;
 			bigtmp = 0xFF'FFFF;
 			bigtmp2 = 0x80'0000;
@@ -963,6 +974,7 @@ public:
 			bigtmp2 <<= 64;
 			uint32_t r2 = ((bigmres & bigtmp) == bigtmp2);
 			bigmres = (bigmres >> (24 + 64)) + r1 + r2;
+			cout << "bigmres: " << bigmres << endl;
 			/*
 			if (mres >= 0x0100'0000) { // mres is greater than 2^23 // add this into >= 2^48
 				mres >>= 1;
@@ -976,7 +988,8 @@ public:
 			shift <<= 64;
 			uint32_t r1 = ((bigmres & (shift - 1)) > (shift >> 1)) + ((bigmres & (shift - 1)) == (shift >> 1));
 			uint32_t r2 = (((bigmres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
-			return res + (bigmres.convert_to<uint32_t>() >> (24 - eres)) + r1 + r2;
+			cout << "bigmres: " << (bigmres >> (24 - eres + 64)) << endl;
+			return res + (bigmres.convert_to<uint32_t>() >> (24 - eres + 64)) + r1 + r2;
 		}
 		else {
 			return res;
@@ -1978,7 +1991,7 @@ public:
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
 //			res = FP32::div4(uint32_t(vl[i]), uint32_t(vr[i]), f);
-			res = FP32::fma4(vl[i], vr[i], 0x4db20ea, f); // 0x0, 0xaa002, 4db20ea, 1fe006
+			res = FP32::fma3(vl[i], vr[i], 0x4db20ea, f); // 0x0, 0xaa002, 4db20ea, 1fe006
 			if (f == f && res != FP32(f).data) {
 				if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
 				cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
@@ -2004,7 +2017,7 @@ public:
 				//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
-								res = FP32::fma4(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
+								res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
 				//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
 				if (f == f && res != FP32(f).data) {
 					if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
@@ -2014,8 +2027,8 @@ public:
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
 					cout << endl << "Continue? 1 - yes, 0 - no\n";
-					cin >> input;
-					//					input = 1;
+//					cin >> input;
+					input = 1;
 					if (input) continue;
 					return;
 				}
