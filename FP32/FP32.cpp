@@ -1985,7 +1985,7 @@ public:
 		uint64_t lc, rc;
 		uint32_t res;
 		float f;
-		size_t from = 100;
+		size_t from = 0;
 
 		vector<uint32_t> vl = { 0x0, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x11000, 0x1980, 0x1980, 0x1980, 0x6f90e, 0xff02, 0x1000102, 0xcdb31d0, 0x9f617, 0x2a55e1c0, 0x1cdf46aa, 0x817f2b, 0x2ff04eb, 0x97e8dec, 0x98ba0ea3, 0x2a55e1c0 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
 		vector<uint32_t> vr = { 0x0, 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x3c0e6000, 0x87ff, 0x30d69c11, 0x3a4c4bdc, 0x9ea35ab1, 0xbc7fee96, 0x7f000878, 0xaa2f2fd3, 0x413e5b28, 0xa46fe324, 0xa9ffa000, 0x3fff9bdc, 0x3d777d4a, 0x377d80aa, 0x3aba3ed6, 0xa46fe324 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
@@ -2010,26 +2010,27 @@ public:
 
 		//		cout << "Add\n";
 
-//		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 696322)
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 65282) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69631) {
+		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 696322)
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 652823) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 696314) {
 				//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
-				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
-				//				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
-				//				if (f == f && res != FP32(f).data && res - 1 != FP32(f).data && res + 1 != FP32(f).data) {
-				if (f == f && res != FP32(f).data && res + 1 != FP32(f).data && res - 1 != FP32(f).data) {
+//				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
+
+//				if (f == f && res != FP32(f).data && res + 1 != FP32(f).data && res - 1 != FP32(f).data) {
+				if (f == f && res != FP32(f).data) {
 					if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
-//					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR (a + b*c)\n";
-					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
+					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR (a + b*c)\n";
+//					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
 					cout << endl << "Continue? 1 - yes, 0 - no\n";
-//					cin >> input;
-					input = 1;
+					cin >> input;
+//					input = 1;
 					if (input) continue;
 					return;
 				}
