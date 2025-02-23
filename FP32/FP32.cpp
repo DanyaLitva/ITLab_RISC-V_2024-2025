@@ -2012,8 +2012,8 @@ public:
 		//		cout << "Add\n";
 
 //		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 696322)
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 65281) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69633) {
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 65286) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69635) {
 				//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
@@ -2030,8 +2030,8 @@ public:
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
 					cout << endl << "Continue? 1 - yes, 0 - no\n";
-//					cin >> input;
-					input = 1;
+					cin >> input;
+//					input = 1;
 					if (input) continue;
 					return;
 				}
@@ -2200,7 +2200,7 @@ int main() {
 		//cout << (-99 % 16) << endl;
 		//cout << (-99 >> 4) << endl;
 
-
+	system("pause");
 	return 0;
 }
 
