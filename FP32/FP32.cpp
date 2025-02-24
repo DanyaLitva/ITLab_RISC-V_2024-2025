@@ -12,7 +12,27 @@
 #include <string>
 #include <fstream>
 //#define FP_FAST_FMAF
-//#if __GNUC__
+#if !__GNUC__
+int32_t __builtin_clz(uint32_t num) { \
+	if (num == 0) return 32; \
+	int32_t res = 0; \
+	while (!(num & 0x8000'0000)) { \
+		num <<= 1; \
+		++res; \
+	} \
+	return res; \
+} 
+
+int32_t __builtin_clzll(uint64_t num) { \
+	if (num == 0) return 64; \
+	int32_t res = 0; \
+	while (!(num & 0x8000'0000'0000'0000)) { \
+		num <<= 1; \
+		++res; \
+	} \
+	return res; \
+} 
+#endif
 
 using namespace std;
 
@@ -235,16 +255,23 @@ public:
 		res = 0x80000000 * (mres < 0);
 		mres *= -(2 * (mres < 0) - 1);
 
-		//		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
-		if (mres >= 0x1'0000'0000'0000 /*0x100'0000*/) { // if mres is greater than a 2^23 (2^48) // make a non-if code
+		if (mres >= 0x1'0000'0000'0000) { // if mres is greater than a 2^23 (2^48) // make a non-if code
 			mres >>= (eres > 0); // subnormals
 			++eres;
 		}
-		else {
-			while (mres < 0x8000'0000'0000 /*0x80'0000*/ && eres > 0) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+		else if (mres == 0)
+			eres = 0;
+		else if (__builtin_clz(mres) > 16 && eres > 0 && (__builtin_clz(mres) - 16) < eres) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+			eres -= (__builtin_clz(mres) - 16);
+			mres <<= (__builtin_clz(mres) - 16);
+			/*while (mres < 0x8000'0000'0000 && eres > 0) { 
 				--eres;
 				mres <<= (eres > 0); // subnormals
-			}
+			}*/
+		}
+		else if (__builtin_clz(mres) > 16 && eres > 0 && (__builtin_clz(mres) - 16) >= eres) {
+			mres <<= eres - 1;
+			eres = 0;
 		}
 
 		mres = (mres >> 24) + ((mres & 0xFF'FFFF) > 0x80'0000) + ((mres & 0x1FF'FFFF) == 0x180'0000); // last 24 bit stored 
@@ -257,12 +284,11 @@ public:
 			return res + 0x7F800000;
 		}
 		res += eres << 23; // calcuating result
-		if (eres > 0)
+		/*if (eres > 0)
 			return res + mres - 0x00800000;
 		else
-			return res + mres;
-
-		return res;
+			return res + mres; */
+		return res + mres - (eres > 0) * 0x00800000;
 	}
 
 	static uint32_t sub(uint32_t l, uint32_t r, float& example) noexcept { // check me!
@@ -380,11 +406,7 @@ public:
 			}
 		}
 		else if (eres >= -23) { // if subnormal
-			//			mres >>= (-eres + 1);
 			uint64_t shift = 1ull << (23 - eres + 1);
-			//			return res + (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored
-
-			//			cout << dec << endl << eres << hex << " " << shift - 1 << " " << (shift >> 1) << " " << (shift << 1) - 1 << " " << shift + (shift >> 1) << endl;
 			return res + (mres >> (23 - eres + 1)) +
 				((mres & (shift - 1)) > (shift >> 1)) +
 				(((mres & ((shift << 1) - 1))) == (shift + (shift >> 1)));
@@ -1671,7 +1693,6 @@ public:
 		r = mr + (127ul << 23); // diapason [1, 2)
 		l = ml + (127ul << 23);
 
-//		uint32_t x = FP32::fma3(0xbff0f0f1ul, r, 0x4034b4b5ul, dummy); // 48/17 - 32/17 * d. 0 iteration. x = 1 / r
 		uint32_t x = FP32::fma3(0xbef0f0f1ul, r, 0x3fb4b4b5ul, dummy); // 24/17 - 8/17 * d.
 		r = FP32::usub(r);
 		uint32_t e;
