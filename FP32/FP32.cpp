@@ -387,8 +387,8 @@ public:
 			eres -= 1;
 			mres <<= 1;
 		}*/
-		eres -= max(min((__builtin_clz(mres) - 17), eres), 0);
-		mres <<= max(min((__builtin_clz(mres) - 17), eres), 0);
+		eres -= max(min((__builtin_clzll(mres) - 17), eres), 0);
+		mres <<= max(min((__builtin_clzll(mres) - 17), eres), 0);
 		/*while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
 			eres += 1;
 			mres >>= 1;
