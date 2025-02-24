@@ -261,15 +261,15 @@ public:
 		}
 		else if (mres == 0)
 			eres = 0;
-		else if (__builtin_clz(mres) > 16 && eres > 0 && (__builtin_clz(mres) - 16) < eres) { // if mres is less than a 2^23 (2^24) // can add mres == 0
-			eres -= (__builtin_clz(mres) - 16);
-			mres <<= (__builtin_clz(mres) - 16);
+		else if (__builtin_clzll(mres) > 16 && eres > 0 && (__builtin_clzll(mres) - 16) < eres) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+			eres -= (__builtin_clzll(mres) - 16);
+			mres <<= (__builtin_clzll(mres) - 16);
 			/*while (mres < 0x8000'0000'0000 && eres > 0) { 
 				--eres;
 				mres <<= (eres > 0); // subnormals
 			}*/
 		}
-		else if (__builtin_clz(mres) > 16 && eres > 0 && (__builtin_clz(mres) - 16) >= eres) {
+		else if (__builtin_clzll(mres) > 16 && eres > 0 && (__builtin_clzll(mres) - 16) >= eres) {
 			mres <<= eres - 1;
 			eres = 0;
 		}
@@ -383,14 +383,18 @@ public:
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
 		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
 
-		while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
+		/*while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
 			eres -= 1;
 			mres <<= 1;
-		}
-		while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
+		}*/
+		eres -= max(min((__builtin_clz(mres) - 17), eres), 0);
+		mres <<= max(min((__builtin_clz(mres) - 17), eres), 0);
+		/*while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
 			eres += 1;
 			mres >>= 1;
-		}
+		}*/
+		eres += __builtin_clzll(mres) - 17;
+		mres >>= __builtin_clzll(mres) - 17;
 
 		if (eres > 0) { // if normal
 			mres = (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored 
