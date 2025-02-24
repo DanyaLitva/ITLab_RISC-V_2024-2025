@@ -12,6 +12,7 @@
 #include <string>
 #include <fstream>
 //#define FP_FAST_FMAF
+//#if __GNUC__
 
 using namespace std;
 
@@ -639,8 +640,8 @@ public:
 //		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
 
 		float dummy; //
-		bool coutflag = false; //
-//		bool coutflag = true; //
+//		bool coutflag = false; //
+		bool coutflag = true; //
 		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
 		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
 		example = std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example); //
@@ -792,8 +793,8 @@ public:
 		else if (eres >= -23) {
 //			uint64_t shift = 1ull << (24 - eres + 1);
 			uint64_t shift = 1ull << (24 - eres);
-//			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0) * (resSign == mresLShiftSign);
-			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0);
+			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0) * (resSign == mresLShiftSign);
+//			uint32_t r1 = ((mres & (shift - 1)) > (shift >> 1)) + ((mres & (shift - 1)) == (shift >> 1)) * (mresLShift != 0x0);
 			uint32_t r2 = (((mres & ((shift << 1) - 1))) == (shift + (shift >> 1))) * (mresLShift == 0x0);
 //			return res + (mres >> (24 - eres + 1)) + r1 + r2;
 			return res + (mres >> (24 - eres)) + r1 + r2;
@@ -1670,7 +1671,6 @@ public:
 		r = mr + (127ul << 23); // diapason [1, 2)
 		l = ml + (127ul << 23);
 
-
 //		uint32_t x = FP32::fma3(0xbff0f0f1ul, r, 0x4034b4b5ul, dummy); // 48/17 - 32/17 * d. 0 iteration. x = 1 / r
 		uint32_t x = FP32::fma3(0xbef0f0f1ul, r, 0x3fb4b4b5ul, dummy); // 24/17 - 8/17 * d.
 		r = FP32::usub(r);
@@ -1988,18 +1988,20 @@ public:
 		float f;
 		size_t from = 0;
 
-		vector<uint32_t> vl = { 0x0, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x11000, 0x1980, 0x1980, 0x1980, 0x6f90e, 0xff02, 0x1000102, 0xcdb31d0, 0x9f617, 0x2a55e1c0, 0x1cdf46aa, 0x817f2b, 0x2ff04eb, 0x97e8dec, 0x98ba0ea3, 0x2a55e1c0 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
-		vector<uint32_t> vr = { 0x0, 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x3c0e6000, 0x87ff, 0x30d69c11, 0x3a4c4bdc, 0x9ea35ab1, 0xbc7fee96, 0x7f000878, 0xaa2f2fd3, 0x413e5b28, 0xa46fe324, 0xa9ffa000, 0x3fff9bdc, 0x3d777d4a, 0x377d80aa, 0x3aba3ed6, 0xa46fe324 }; // {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
+		vector<uint32_t> vl = { 0x0, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x11000, 0x3c900000, 0x11000, 0x1980, 0x1980, 0x1980, 0x6f90e, 0xff02, 0x1000102, 0xcdb31d0, 0x9f617, 0x2a55e1c0, 0x1cdf46aa, 0x817f2b, 0x2ff04eb, 0x97e8dec, 0x98ba0ea3, 0x2a55e1c0, 0x27d8f800 }; // {0x11000, 0x40011000, 0x811000, 0x811000, 0xaec000, 0xb85000, 0x14ffd180, 0x17ffe800, 0x2e7fd180, 0x317fe800, 0x47ffd180, 0x4affe800, 0x11000, 0x11000};
+		vector<uint32_t> vr = { 0x0, 0x3f00c000, 0x42719000, 0x41f10000, 0x42f11000, 0x3c801000, 0x48004000, 0x80009000, 0x3c0e6000, 0x87ff, 0x30d69c11, 0x3a4c4bdc, 0x9ea35ab1, 0xbc7fee96, 0x7f000878, 0xaa2f2fd3, 0x413e5b28, 0xa46fe324, 0xa9ffa000, 0x3fff9bdc, 0x3d777d4a, 0x377d80aa, 0x3aba3ed6, 0xa46fe324, 0x5500f800 };// {0x231000, 0x80231000, 0x511d000, 0x520b000, 0x6fdc000, 0x7ecd000, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0xb47fdc3a, 0x98ffeffe, 0x1166000, 0x48004000 };
 		for (size_t i = from; i < vl.size(); ++i) {
 			cout << hex << vl[i] << ", " << vr[i] << endl;
-			res = FP32::div3(uint32_t(vl[i]), uint32_t(vr[i]), f);
-//			res = FP32::fma3(vl[i], vr[i], 0x4db20ea, f); // 0x0, 0xaa002, 4db20ea, 1fe006
+//			res = FP32::div3(uint32_t(vl[i]), uint32_t(vr[i]), f);
+			res = FP32::fma3(vl[i], vr[i], 0xaa002, f); // 0x0, 0xaa002, 4db20ea, 1fe006
 			if (f == f && res != FP32(f).data) {
 				if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
 				cout << hex << vl[i] << ", " << vr[i] << " , that is " << FP32(uint32_t(vl[i])).example << ", " << FP32(uint32_t(vr[i])).example << " ERROR\n";
 				cout << f << " expected, " << float(FP32(res)) << " instead\n";
 				FP32(f).print();
 				cout << bitset<32>(res) << endl;
+				double dexample = std::fma(double(FP32(uint32_t(vl[i])).example), double(FP32(uint32_t(vr[i])).example), double(FP32(uint32_t(0xaa002)).example));
+				cout << bitset<64>(*((uint64_t*)&dexample)) << endl;
 				input = 1;
 			}
 			cout << endl;
@@ -2011,24 +2013,26 @@ public:
 
 		//		cout << "Add\n";
 
-//		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 696322)
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 65286) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 69635) {
+		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 696322)
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 652862) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 696351) {
 				//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 				//				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
-				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
-//				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
+//				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
 
 //				if (f == f && res != FP32(f).data && res + 1 != FP32(f).data && res - 1 != FP32(f).data) {
 				if (f == f && res != FP32(f).data) {
 					if (((res & 0x7FFF'FFFF) == 0x0) && ((FP32(f).data & 0x7FFF'FFFF) == 0x0)) continue;
-//					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR (a + b*c)\n";
-					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
+					cout << hex << endl << abcd << ", " << lc << ", " << rc << " , that is " << FP32(uint32_t(abcd)).example << ", " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR (a + b*c)\n";
+//					cout << hex << endl << lc << ", " << rc << " , that is " << FP32(uint32_t(lc)).example << ", " << FP32(uint32_t(rc)).example << " ERROR\n";
 					cout << f << " expected, " << float(FP32(res)) << " instead\n";
 					FP32(f).print();
 					cout << bitset<32>(res) << endl;
+					double dexample = double(FP32(uint32_t(lc)).example)*double(FP32(uint32_t(rc)).example)+double(FP32(uint32_t(abcd)).example);
+					cout << bitset<64>(*((uint64_t*)&dexample)) << endl;
 					cout << endl << "Continue? 1 - yes, 0 - no\n";
 					cin >> input;
 //					input = 1;
@@ -2125,6 +2129,11 @@ vector <vector <double> > mmulv2(const vector <vector <double> >& A, const vecto
 	return C;
 }
 
+uint32_t foo(uint32_t num) {
+	cout << bitset<32>(num) << endl;
+	return __builtin_clz(num);
+}
+
 int main() {
 	//using mat = vector <vector <double> >;
 	//size_t n = 10000;
@@ -2186,7 +2195,7 @@ int main() {
 	Alltests tests;
 	//if (flag) flag = tests.run_specific();
 	//if (flag) flag = tests.run();
-	tests.run2();
+//	tests.run2();
 	cout << endl << "ENDED" << endl;
 	//	cout << hex << 0xa5effull * 0x6cd000ull + (0xa5effull << 23) + (0x6cd000ull << 23) << endl;
 	//	cout << hex << 0x8a5effull * 0xecd000ull << endl;
@@ -2199,27 +2208,7 @@ int main() {
 		//cout << (a >> 4) << endl;
 		//cout << (-99 % 16) << endl;
 		//cout << (-99 >> 4) << endl;
-
+	cout << foo(0x3FFF'FFFFul) << endl;
 	system("pause");
 	return 0;
-}
-
-void foo() {
-	int records = 5;
-	vector<int> ids;
-
-	std::unordered_map<int, std::string> mp;
-	for (int i = 0; i < records; ++i) {
-		mp.insert({ ids[i], "hash_" + std::to_string(i) + ".txt" });
-	}
-
-	// do smth
-
-	int id = 5;
-	string str = mp.find(id)->second;
-
-	std::ofstream file;
-	string line;
-	file.open(str);
-	file << line;
 }
