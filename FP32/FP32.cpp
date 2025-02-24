@@ -12,7 +12,7 @@
 #include <string>
 #include <fstream>
 //#define FP_FAST_FMAF
-#if !__GNUC__
+#if !__GNUC__ && !__clang__
 int32_t __builtin_clz(uint32_t num) { \
 	if (num == 0) return 32; \
 	int32_t res = 0; \
@@ -383,18 +383,27 @@ public:
 		eres = ((el + er) >> 23) - 127 + (el == 0) + (er == 0); // calculating exponent
 		mres = ((ml + 0x00800000 * (el > 0))) * ((mr + 0x00800000 * (er > 0))); // calculating 23 bit extended mantissa // make mantissa longer up to the 64, << 18
 
+		if (mres == 0) return res;
 		/*while ((mres < 0x4000'0000'0000) && (eres >= 0)) { // mres has no leading bit 2^23. Can it be speeded up?
 			eres -= 1;
 			mres <<= 1;
+		}
+		if (mres < 0x4000'0000'0000 && eres >= 0) {
+			int shift_amount = __builtin_clzll(mres) - __builtin_clzll(0x4000'0000'0000);
+			shift_amount = std::min(shift_amount, eres);  // Ensure eres does not go negative
+
+			mres <<= shift_amount;
+			eres -= shift_amount;
 		}*/
-		eres -= max(min((__builtin_clzll(mres) - 17), eres), 0);
-		mres <<= max(min((__builtin_clzll(mres) - 17), eres), 0);
+		int32_t etmp = eres;
+		eres -= max(min((__builtin_clzll(mres) - 17), etmp), 0);
+		mres <<= max(min((__builtin_clzll(mres) - 17), etmp), 0);
 		/*while (mres >= 0x8000'0000'0000) { // mres is greater than 2^23 (2^?). Can it be speeded up?
 			eres += 1;
 			mres >>= 1;
 		}*/
-		eres += __builtin_clzll(mres) - 17;
-		mres >>= __builtin_clzll(mres) - 17;
+		eres += (17 - __builtin_clzll(mres)) * (mres >= 0x8000'0000'0000);
+		mres >>= (17 - __builtin_clzll(mres)) * (mres >= 0x8000'0000'0000);
 
 		if (eres > 0) { // if normal
 			mres = (mres >> 23) + ((mres & 0x7F'FFFF) > 0x40'0000) + ((mres & 0xFF'FFFF) == 0xC0'0000); // last 23 bit stored 
@@ -666,8 +675,8 @@ public:
 //		return FP32(std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example)).data;
 
 		float dummy; //
-//		bool coutflag = false; //
-		bool coutflag = true; //
+		bool coutflag = false; //
+//		bool coutflag = true; //
 		if (coutflag) cout << endl << hex << a << " " << b << " " << c << endl; //
 		if (coutflag) cout << float(FP32(a)) << " " << float(FP32(b)) << " " << float(FP32(c)) << endl;//
 		example = std::fmaf(FP32(a).example, FP32(b).example, FP32(c).example); //
@@ -776,17 +785,24 @@ public:
 			mres >>= 1; // ROUNDING!!!
 			++eres; */
 		}
-		else if (mres != 0) { 
+		else if (mres == 0)
+			eres = 0;
+		else if (__builtin_clzll(mres) > 16 && eres > 0 && (__builtin_clzll(mres) - 16) < eres) { // if mres is less than a 2^23 (2^24) // can add mres == 0
+			eres -= (__builtin_clzll(mres) - 16);
+			mres <<= (__builtin_clzll(mres) - 16);
+		}
+		else if (__builtin_clzll(mres) > 16 && eres > 0 && (__builtin_clzll(mres) - 16) >= eres) {
+			mres <<= eres - 1;
+			eres = 0;
+		}/*
+		else if (mres != 0) {
 			while ((mres < 0x8000'0000'0000) && (eres > 0)) { // if mres is less than a 2^23 (2^24) // can add mres == 0 0x8000'0000'0000
 				--eres;
 				mres <<= (eres > 0); // subnormals
 //				mres <<= (eres != 0);
 //				mres <<= 1;
 			}
-		}
-		else {
-			eres = 0;
-		}
+		}*/
 		if (coutflag) cout << "mres: " << mres << ", mresLShift: " << mresLShift << ", eres: " << dec << eres << hex << endl; //
 
 		// ROUNDING
@@ -2036,16 +2052,16 @@ public:
 			return;
 		}
 
-		cout << "Add\n";
+//		cout << "Add\n";
 
 //		for (uint64_t abcd = 0; abcd <= 0xFFFFFFFF; abcd += 696322)
-		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 6528) { // 6528 69632 0x11000
-			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 6963) {
-				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
+		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 5417) { // 6528 69632 0x11000
+			for (rc = 0x00000000; rc <= 0xFFFFFFFF; rc += 5852) {
+//				res = FP32::add3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::sub(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::mul3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::div2(uint32_t(lc), uint32_t(rc), f);
-//				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
+				res = FP32::div3(uint32_t(lc), uint32_t(rc), f);
 //				res = FP32::fma3(uint32_t(lc), uint32_t(rc), uint32_t(abcd), f);
 
 //				if (f == f && res != FP32(f).data && res + 1 != FP32(f).data && res - 1 != FP32(f).data) {
@@ -2064,7 +2080,7 @@ public:
 				}
 			}
 		}
-		
+		/*
 		cout << "Sub\n";
 
 		for (lc = 0x00000000; lc <= 0xFFFFFFFF; lc += 5417) { // 6528 69632 0x11000
@@ -2110,6 +2126,7 @@ public:
 				}
 			}
 		}
+		*/
 	}
 };
 
