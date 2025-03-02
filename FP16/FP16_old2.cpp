@@ -167,10 +167,10 @@ public:
     }
 
     //
-    FP16 operator-(FP16 N2) const {
-        FP16 temp(*this);
-        ++N2.sign;
-        return (temp + N2);
+    FP16 operator-(FP16 N2){
+        FP16 temp(N2);
+        ++temp.sign;
+        return (*this + temp);
     }
 
     //

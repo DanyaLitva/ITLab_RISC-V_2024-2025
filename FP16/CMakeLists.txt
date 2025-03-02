@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8...3.13)
 
 add_executable(FP16 FP16.cpp)
 
