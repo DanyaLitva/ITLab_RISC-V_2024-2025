@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <cuda_fp16.h>
 #include <iostream>
+#include <ctime>
 cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size);
 
 __global__ void addKernel(int* c, const int* a, const int* b)
@@ -81,9 +82,10 @@ public:
         return *this;
     }
 
-    //
-    //(1 - (2 * ((this->sign + right.sign) % 2)))
-    //
+    uint16_t get_int() {
+        uint16_t temp = (sign << (manLength + expLength)) + (exp << manLength) + man;
+        return temp;
+    }
 
     FP16 operator+(FP16 right) {
         if (IsNull()) return right;
@@ -94,10 +96,12 @@ public:
         int8_t diff = exp - right.exp;
         int16_t shift;
         uint8_t max_exp;
-        uint16_t lost_bit = 0;
+        uint32_t lost_bit = 0;
 
         if (diff < 0) max_exp = right.exp;
         else max_exp = exp;
+
+
 
         if ((exp == right.exp)) {
             shift = 1 << (manLength);
@@ -161,6 +165,28 @@ public:
             }
         }
 
+        if (sign != right.sign && lost_bit != 0) {
+            temp--;
+            lost_bit = (1 << (diff)) - lost_bit;
+        }
+
+
+        while (temp < (1 << manLength) && max_exp>1) {
+            temp <<= 1;
+            max_exp--;
+            temp += (lost_bit >> (diff - 1)) & 1;
+            lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+            diff--;
+        }
+
+        if (temp < (1 << manLength) && max_exp == 1) {
+            max_exp--;
+            temp += (lost_bit >> (diff - 1)) & 1;
+            lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+            diff--;
+        }
+
+
         if (temp == 0) {
             Res.sign = 0;
             Res.exp = 0;
@@ -182,17 +208,22 @@ public:
 
 
         if ((lost_bit >> (diff - 1)) & 1) {
-                lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
-                if (lost_bit > 0) {
-                    temp += (1 - (2 * ((this->sign + right.sign) % 2)));
-                }
-                else {
-                    temp += (1 - (2 * ((this->sign + right.sign) % 2))) * (temp & 1);
-                }
-                if ((temp >= (1 << (manLength + 1))) &&(max_exp>=1)) {
-                    temp = temp >> 1;
-                    max_exp++;
-                }
+            lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+            if (lost_bit > 0) {
+                temp++;
+            }
+            else {
+                temp += (temp & 1);
+            }
+            if ((temp >= (1 << (manLength + 1))) && (max_exp >= 1)) {
+                temp = temp >> 1;
+                max_exp++;
+            }
+        }
+
+
+        if (temp < (1 << manLength) && max_exp == 1) {
+            max_exp = 0;
         }
 
         if (temp >= (1 << manLength) && (max_exp == 0)) {
@@ -229,6 +260,7 @@ public:
             }
         }
 
+
         Res.exp = max_exp;
         Res.man = (temp - (1 << manLength));
         if (max_exp == 0) Res.man = temp;
@@ -240,99 +272,137 @@ public:
         return *this + right;
     }
 
-
     FP16 operator*(FP16 right) {
         FP16 Res;
         Res.sign = sign ^ right.sign;
         uint16_t temp_man;
-        int8_t temp_exp;
+        int16_t temp_exp;
         uint32_t lost_bit;
         uint8_t diff = manLength;
+        if (IsNull() || right.IsNull()) {
+            Res.exp = 0;
+            Res.man = 0;
+            return Res;
+        }
         if (!IsSubnormal() && !right.IsSubnormal()) {
             temp_exp = exp + right.exp - shiftExp - shiftExp;
             temp_man = (1 << manLength) + man + right.man + uint16_t((uint32_t(man) * right.man) >> manLength);
-
-            lost_bit = (uint32_t(man) * right.man) & ((1 << manLength) - 1);
-
-            if (temp_exp < -(shiftExp - 1)) {
-                while (temp_exp < -(shiftExp - 1)) {
-                    lost_bit += (temp_man & 1) << diff;
-                    diff++;
-                    temp_man = temp_man >> 1;
-                    temp_exp++;
-                }
-                if (temp_man < (1 << manLength)) temp_exp = -shiftExp;
+        }
+        else {
+            if (IsSubnormal() && right.IsSubnormal()) {
+                Res.exp = 0;
+                Res.man = 0;
+                return Res;
             }
+            else {
+                temp_exp = exp - shiftExp + right.exp - shiftExp + 1;
+                if (IsSubnormal()) {
+                    temp_man = man + uint16_t((uint32_t(man) * right.man) >> manLength);
+                }
+                else {
+                    temp_man = right.man + uint16_t((uint32_t(man) * right.man) >> manLength);
+                }
+            }
+        }
 
-            if ((temp_man >= (1 << (manLength + 1))) && (temp_exp >= -(shiftExp - 1))) {
+        lost_bit = (uint32_t(man) * right.man) & ((1 << manLength) - 1);
+
+        if (temp_exp < -(shiftExp - 1)) {
+            while (temp_exp < -(shiftExp - 1)) {
                 lost_bit += (temp_man & 1) << diff;
                 diff++;
                 temp_man = temp_man >> 1;
                 temp_exp++;
             }
+            if (temp_man < (1 << manLength)) temp_exp = -shiftExp;
+        }
 
-            if ((lost_bit >> (diff - 1)) & 1) {
-                lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
-                if (lost_bit > 0) {
-                    temp_man++;
-                }
-                else {
-                    temp_man += (temp_man & 1);
-                }
-                if ((temp_man >= (1 << (manLength + 1))) && (temp_exp >= -(shiftExp - 1))) {
-                    temp_man = temp_man >> 1;
-                    temp_exp++;
-                }
+        while (temp_man < (1 << manLength) && temp_exp>-(shiftExp - 1)) {
+            temp_man <<= 1;
+            temp_exp--;
+
+            temp_man += (lost_bit >> (diff - 1)) & 1;
+            lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+            diff--;
+        }
+
+        if ((temp_man >= (1 << (manLength + 1))) && (temp_exp >= -(shiftExp - 1))) {
+            lost_bit += ((temp_man & 1) << (diff));
+            diff++;
+            temp_man = temp_man >> 1;
+            temp_exp++;
+        }
+
+        if ((lost_bit >> (diff - 1)) & 1) {
+            lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+            if (lost_bit > 0) {
+                temp_man++;
             }
-
-            if (temp_exp == -shiftExp && temp_man >= (1 << manLength)) {
+            else {
+                temp_man += (temp_man & 1);
+            }
+            if ((temp_man >= (1 << (manLength + 1))) && (temp_exp >= -(shiftExp - 1))) {
+                temp_man = temp_man >> 1;
                 temp_exp++;
-                temp_man -= (1 << manLength);
             }
+        }
 
-            if ((temp_exp >= ((1 << expLength) - 1 - shiftExp)) || IsInf() || right.IsInf() || IsNan() || right.IsNan()) {
-                //inf +- inf
-                if (IsInf() && right.IsInf()) {
-                    if (sign != right.sign) {
-                        Res.exp = (1 << expLength);
-                        Res.man = 1;
-                        return Res;
-                    }
-                    else {
-                        return *this;
-                    }
-                }
+        if (temp_exp == -shiftExp && temp_man >= (1 << manLength)) {
+            temp_exp++;
+        }
 
-                if (IsInf()) return *this;
-
-                if (right.IsInf()) return right;
-
-                if (IsNan()) return *this;
-
-                if (right.IsNan()) return right;
-
-                //if result is inf
-                if (temp_exp >= (((1 << expLength) - 1 - shiftExp))) {
-                    Res.exp = (1 << expLength) - 1;
-                    Res.man = 0;
+        if ((temp_exp >= ((1 << expLength) - 1 - shiftExp)) || IsInf() || right.IsInf() || IsNan() || right.IsNan()) {
+            //inf +- inf
+            if (IsInf() && right.IsInf()) {
+                if (sign != right.sign) {
+                    Res.exp = (1 << expLength);
+                    Res.man = 1;
                     return Res;
                 }
+                else {
+                    return *this;
+                }
             }
 
+            if (IsInf()) return *this;
 
-            Res.exp = temp_exp + shiftExp;
-            Res.man = temp_man - (1 << manLength);
+            if (right.IsInf()) return right;
 
+            if (IsNan()) return *this;
+
+            if (right.IsNan()) return right;
+
+            //if result is inf
+            if (temp_exp >= (((1 << expLength) - 1 - shiftExp))) {
+                Res.exp = (1 << expLength) - 1;
+                Res.man = 0;
+                return Res;
+            }
+        }
+
+        if ((temp_man < (1 << manLength)) && (temp_exp == -(shiftExp - 1))) {
+            Res.exp = 0;
+            Res.man = temp_man;
             return Res;
         }
-        //subnormal
-        else {
 
+        Res.exp = temp_exp + shiftExp;
+        Res.man = temp_man - (1 << manLength);
 
-
-        }
+        return Res;
     }
+
+    friend FP16 fma(FP16 a, FP16 b, FP16 c);
 };
+
+//a*b + c
+FP16 fma(FP16 a, FP16 b, FP16 c) {
+    FP16 Res;
+    uint32_t temp_man;
+
+
+    return Res;
+}
 
 
 
@@ -342,66 +412,28 @@ void print_bites(float16_t a) { print_float16_bites(a); }
 void Test_Add();
 void Test_Sub();
 void Test_Mul();
+void TimeTest();
 
 using namespace std;
 int main() {
-    FP16 A(0, 15, 2);
-    FP16 B(0, 30, 1022);
+    FP16 A(0, 0, 1);
+    FP16 B(1, 17, 1);
 
     float16_t a = A;
     float16_t b = B;
     float16_t c;
     cout << "A: "; print_bites(A); cout << ", " << __half2float(A) << endl;
     cout << "B: "; print_bites(B); cout << ", " << __half2float(B) << endl;
-    //    cout << "A + B: "; print_bites(A + B); cout << " - My" << ", " << __half2float(A + B) << endl;
-    //    cout << "a + b: "; print_bites(a + b); cout << ", " << float(a + b) << endl;
-    //cout << "A - B: "; print_bites(A - B); cout << " - My" << ", " << __half2float(A - B) << endl;
-    //cout << "a - b: "; print_bites(a - b); cout << ", " << float(a - b) << endl;
-        cout << "A * B: "; print_bites(A * B); cout << ", " << __half2float(A * B) << " - My" << endl;
-        cout << "a * b: "; print_bites(a * b); cout << ", " << float(a * b) << endl;
-
-
-
-    cout << endl << "Start Test:" << endl;
-
-    //size_t sign1 = 0;
-    //size_t sign2 = 0;
-    //size_t exp1 = 5;
-    //size_t exp2 = 3;
-    //for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
-    //    for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
-    //        FP16 A(sign1, exp1, man1);
-    //        FP16 B(sign2, exp2, man2);
-    //        FP16 C = A * B;
-    //        a = A; b = B;
-    //        c = a * b;
-    //        if (abs(float16_bites_to_short(C) - float16_bites_to_short(c)) >= 1) {
-    //            cout << "A: ";
-    //            print_bites(A);
-    //            cout << endl;
-    //            cout << "B: ";
-    //            print_bites(B);
-    //            cout << endl;
-    //            cout << "A * B: ";
-    //            print_bites(A * B);
-    //            cout << " * My " << endl;
-    //            cout << "a * b: ";
-    //            print_bites(a * b);
-    //            cout << endl;
-    //            cout << sign1 << " " << exp1 << " " << man1 << " " << endl;
-    //            cout << sign2 << " " << exp2 << " " << man2 << " " << endl;
-    //            return 0;
-    //        }
-    //    }
-    //}
-
-
-
-
-    //Test_Add();
-    //Test_Sub();
+    cout << "A + B: "; print_bites(A + B); cout << " - My" << ", " << __half2float(A + B) << endl;
+    cout << "a + b: "; print_bites(a + b); cout << ", " << __half2float(a + b) << endl;
+    cout << "A - B: "; print_bites(A - B); cout << " - My" << ", " << __half2float(A - B) << endl;
+    cout << "a - b: "; print_bites(a - b); cout << ", " << __half2float(a - b) << endl;
+    cout << "A * B: "; print_bites(A * B); cout << ", " << __half2float(A * B) << " - My" << endl;
+    cout << "a * b: "; print_bites(a * b); cout << ", " << __half2float(a * b) << endl;
+    
     Test_Mul();
-    cout << endl << "All test done!";
+    
+
     return 0;
 }
 
@@ -413,7 +445,7 @@ void Test_Add() {
         for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
             for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
                 for (size_t sign2 = 0; sign2 < 1; ++sign2) {
-                    for (size_t exp2 = 1; exp2 < (1 << expLength) - 1; ++exp2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
                         for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
                             FP16 A(sign1, exp1, man1);
                             FP16 B(sign2, exp2, man2);
@@ -435,8 +467,7 @@ void Test_Add() {
                                 cout << endl;
                                 cout << sign1 << " " << exp1 << " " << man1 << " " << endl;
                                 cout << sign2 << " " << exp2 << " " << man2 << " " << endl;
-                                return;
-
+                                //return;
                             }
                         }
                     }
@@ -448,12 +479,12 @@ void Test_Add() {
 }
 
 void Test_Sub() {
-    cout << "Addition test:" << endl;
+    cout << "Subrtact test:" << endl;
     float16_t a, b, c;
     for (size_t sign1 = 0; sign1 < 1; ++sign1) {
         for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
             for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
-                for (size_t sign2 = 0; sign2 < 2; ++sign2) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
                     for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
                         for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
                             FP16 A(sign1, exp1, man1);
@@ -476,7 +507,6 @@ void Test_Sub() {
                                 cout << endl;
                                 cout << sign1 << " " << exp1 << " " << man1 << " " << endl;
                                 cout << sign2 << " " << exp2 << " " << man2 << " " << endl;
-                                return;
                                 //return;
 
                             }
@@ -491,12 +521,13 @@ void Test_Sub() {
 
 
 void Test_Mul() {
+    cout << "Mult test:" << endl;
     float16_t a, b, c;
     for (size_t sign1 = 0; sign1 < 1; ++sign1) {
-        for (size_t exp1 = 1; exp1 < (1 << expLength)-1; ++exp1) {
+        for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
             for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
                 for (size_t sign2 = 0; sign2 < 1; ++sign2) {
-                    for (size_t exp2 = 1; exp2 < (1 << expLength)-1; ++exp2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
                         for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
                             FP16 A(sign1, exp1, man1);
                             FP16 B(sign2, exp2, man2);
@@ -518,8 +549,7 @@ void Test_Mul() {
                                 cout << endl;
                                 cout << sign1 << " " << exp1 << " " << man1 << " " << endl;
                                 cout << sign2 << " " << exp2 << " " << man2 << " " << endl;
-                                return;
-                                return;
+                                //return;                                
                             }
                         }
                     }
@@ -530,6 +560,80 @@ void Test_Mul() {
     }
 }
 
+void TimeTest() {
+    FP16 A;
+    FP16 B;
+    FP16 C;
+    int start,end,t;
+    cout << endl << "Addition Time Test:" << endl;
+    start = clock();
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
+                        for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
+                            A = FP16(sign1, exp1, man1);
+                            B = FP16(sign2, exp2, man2);
+                            C = A + B;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    end = clock();
+    t = (end - start) / CLOCKS_PER_SEC;
+
+    cout << "Time: " << t << " seconds" << endl;
+
+    cout << endl << "Subtract Time Test:" << endl;
+
+    start = clock();
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
+                        for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
+                            A = FP16(sign1, exp1, man1);
+                            B = FP16(sign2, exp2, man2);
+                            C = A - B;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    end = clock();
+    t = (end - start) / CLOCKS_PER_SEC;
+
+    cout << "Time: " << t << " seconds" << endl;
+
+    cout << endl << "Multiplication Time Test:" << endl;
+
+    start = clock();
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
+                        for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
+                            A = FP16(sign1, exp1, man1);
+                            B = FP16(sign2, exp2, man2);
+                            C = A * B;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    end = clock();
+    t = (end - start) / CLOCKS_PER_SEC;
+
+    cout << "Time: " << t << " seconds" << endl;
+
+}
 
 
 // Helper function for using CUDA to add vectors in parallel.
