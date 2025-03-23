@@ -69,7 +69,7 @@ public:
     }
 
     operator float16_t() const {
-        unsigned short bits = (sign << 15) | (exp << manLength) | man;
+        unsigned short bits = (sign << (manLength + expLength)) | (exp << manLength) | man;
         return *reinterpret_cast<float16_t*>(&bits);
     }
 
@@ -83,7 +83,7 @@ public:
     }
 
     uint16_t get_int() {
-        uint16_t temp = (sign << (manLength + expLength)) + (exp << manLength) + man;
+        uint16_t temp = (sign << (manLength + expLength)) | (exp << manLength) | man;
         return temp;
     }
 
@@ -178,14 +178,15 @@ public:
             lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
             diff--;
         }
-
+        
+        /*
         if (temp < (1 << manLength) && max_exp == 1) {
             max_exp--;
             temp += (lost_bit >> (diff - 1)) & 1;
             lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
             diff--;
         }
-
+        */
 
         if (temp == 0) {
             Res.sign = 0;
@@ -194,10 +195,13 @@ public:
             return Res;
         }
 
+
+        //?
+        /*
         if (temp < (1 << manLength) && (max_exp == 1)) {
             temp += (1 << manLength);
             max_exp = 0;
-        }
+        }*/
 
         if (temp >= (1 << (manLength + 1)) && (max_exp > 0)) {
             lost_bit += ((temp & 1) << (diff));
@@ -392,14 +396,141 @@ public:
         return Res;
     }
 
-    friend FP16 fma(FP16 a, FP16 b, FP16 c);
+    friend FP16 fma4(FP16 a, FP16 b, FP16 c);
 };
 
-//a*b + c
-FP16 fma(FP16 a, FP16 b, FP16 c) {
-    FP16 Res;
-    uint32_t temp_man;
 
+//a*b + c
+FP16 fma4(FP16 a, FP16 b, FP16 c) {
+    FP16 Res;
+    uint32_t mul_man;
+    int16_t mul_exp;
+    int32_t shift = manLength;
+    Res.sign = a.sign ^ b.sign;
+
+    if (a.IsNull() || b.IsNull()) return c;
+
+    mul_exp = a.exp + b.exp - shiftExp - shiftExp;
+
+    if (!(a.IsSubnormal()) && !(b.IsSubnormal())) {
+        mul_man = (1 << (2 * manLength)) + (a.man << manLength) + (b.man << manLength) + (uint32_t(a.man) * uint32_t(b.man));
+    }
+    else {
+        //беда с сабнормалами
+        if (a.IsSubnormal() && b.IsSubnormal()) {
+            mul_exp+=2;
+            return c;
+            //mul_man = (uint32_t(a.man) * uint32_t(b.man))
+        }
+        else {
+            mul_exp++;
+            if (a.IsSubnormal()) {
+                mul_man = (a.man<<manLength) + (uint32_t(a.man) * uint32_t(b.man));
+            }
+            else {
+                mul_man = (b.man << manLength) + (uint32_t(a.man) * uint32_t(b.man));
+            }
+        }
+    }
+
+    if (mul_exp < -(shiftExp - 1)) {
+        while (mul_exp < -(shiftExp - 1)) {
+            shift++;
+            mul_exp++;
+        }
+        if ((mul_man>>shift) < (1 << manLength)) mul_exp = -shiftExp;
+    }
+
+
+    while ((mul_man>>shift) < (1 << manLength) && mul_exp>-(shiftExp - 1)) {
+        shift--;
+        mul_exp--;
+    }
+    
+    //if (((mul_man >> shift) < (1 << manLength)) && mul_exp == (-shiftExp - 1)) mul_exp = -shiftExp;
+
+    if (((mul_man >> shift) >= (1 << (manLength + 1))) && (mul_exp >= -(shiftExp - 1))) {
+        shift++;
+        mul_exp++;
+    }
+
+    if (mul_exp == -shiftExp && (mul_man >> shift) >= (1 << manLength)) {
+        mul_exp++;
+    }
+
+
+
+
+
+
+
+
+
+
+    mul_exp += shiftExp;
+    shift += (1 << expLength);
+    int64_t man1, man2,sum_man, round_bit;
+    int64_t temp;
+    //2^(21)
+    man1 = uint64_t(mul_man) << (uint64_t(1) << expLength);
+    if (!c.IsSubnormal()) man2 = (uint64_t(c.man) << (manLength + (1 << expLength))) + (uint64_t(1) << (manLength + (1 << expLength) + manLength));
+    else man2 = (uint64_t(c.man) << (manLength + (1 << expLength)));
+
+    
+    if (mul_exp > c.exp) {
+        if (!c.IsSubnormal()) man2 = man2 >> (mul_exp - c.exp);
+        else man2 = man2 >> (mul_exp - (c.exp + 1));
+        sum_man = man1 + (((int(1) - (2 * ((Res.sign + c.sign) % 2)))) * man2);
+    }
+    if (mul_exp < c.exp) {
+        if (mul_exp!=0)  man1 = man1 >> (c.exp - mul_exp);
+        else  man1 = man1 >> (c.exp - (mul_exp + 1));
+        sum_man = man2 + (((int(1) - (2 * ((Res.sign + c.sign) % 2)))) * man1);
+        Res.sign = c.sign;
+    }
+    if (mul_exp == c.exp) {
+        if (man1 >= man2) {
+            sum_man = man1 + (((int(1) - (2 * ((Res.sign + c.sign) % 2)))) * man2);
+        }
+        else {
+            sum_man = man2 + (((int(1) - (2 * ((Res.sign + c.sign) % 2)))) * man1);
+            Res.sign = c.sign;
+        }
+    }
+
+    uint8_t max_exp;
+    if (mul_exp > c.exp) max_exp = mul_exp;
+    else max_exp = c.exp;
+    if ((sum_man >> shift) > (1 << (manLength + 1))) {
+        max_exp++;
+        shift++;
+    }
+
+    while (((sum_man >> shift) < (1 << (manLength))) && (max_exp > 1)) {
+        max_exp--;
+        shift--;
+    }
+
+    temp = (sum_man >> shift);
+    round_bit = sum_man & ((uint64_t(1) << shift) - 1);
+
+
+    if ((round_bit>>(shift-1)) & 1) {
+        round_bit = round_bit & ((uint64_t(1) << (shift - 1)) - 1);
+        if (round_bit > 0) {
+            temp++;
+        }
+        else {
+            temp += (temp & 1);
+        }
+        if ((temp >= (1 << (manLength + 1))) && (max_exp >= 1)) {
+            temp = temp >> 1;
+            max_exp++;
+        }
+    }
+
+    Res.man = temp;
+    Res.exp = max_exp;
 
     return Res;
 }
@@ -412,27 +543,41 @@ void print_bites(float16_t a) { print_float16_bites(a); }
 void Test_Add();
 void Test_Sub();
 void Test_Mul();
+void Test_FMA();
 void TimeTest();
 
 using namespace std;
 int main() {
-    FP16 A(0, 0, 1);
-    FP16 B(1, 17, 1);
+    FP16 A(0, 1, 10);
+    FP16 B(0, 14, 104);
+    FP16 C(1, 1, 1023);
+    FP16 D(1, 17, 1);
 
     float16_t a = A;
     float16_t b = B;
-    float16_t c;
-    cout << "A: "; print_bites(A); cout << ", " << __half2float(A) << endl;
-    cout << "B: "; print_bites(B); cout << ", " << __half2float(B) << endl;
+    float16_t c = C;
+    float16_t d = D;
+
+    //cout << "A: "; print_bites(A); cout << ", " << __half2float(A) << endl;
+    //cout << "B: "; print_bites(B); cout << ", " << __half2float(B) << endl;
     cout << "A + B: "; print_bites(A + B); cout << " - My" << ", " << __half2float(A + B) << endl;
     cout << "a + b: "; print_bites(a + b); cout << ", " << __half2float(a + b) << endl;
-    cout << "A - B: "; print_bites(A - B); cout << " - My" << ", " << __half2float(A - B) << endl;
-    cout << "a - b: "; print_bites(a - b); cout << ", " << __half2float(a - b) << endl;
+    //cout << "A - B: "; print_bites(A - B); cout << " - My" << ", " << __half2float(A - B) << endl;
+    //cout << "a - b: "; print_bites(a - b); cout << ", " << __half2float(a - b) << endl;
     cout << "A * B: "; print_bites(A * B); cout << ", " << __half2float(A * B) << " - My" << endl;
     cout << "a * b: "; print_bites(a * b); cout << ", " << __half2float(a * b) << endl;
+    cout << "A * B + C: "; print_bites(A * B + C); cout << ", " << __half2float(A * B + C) << " - My" << endl;
+    cout << "a * b + c: "; print_bites(a * b + c); cout << ", " << __half2float(a * b + c) << endl;
+    cout << "fma4: A * B + C: "; print_bites(fma4(A,B,C)); cout << ", " << __half2float(fma4(A,B,C)) << " - My" << endl;
+    cout << "fma4: a * b + c: "; print_bites(__float2half(fmaf(__half2float(a), __half2float(b), __half2float(c)))); cout << ", " << __half2float(__float2half(fmaf(__half2float(a), __half2float(b), __half2float(c)))) << endl;
+
     
-    Test_Mul();
-    
+    //d = __float2half(fmaf(__half2float(a), __half2float(b), __half2float(c)));
+    D = fma4(A, B, C);
+    //Test_Sub();
+    //Test_Add();
+    //Test_Mul();
+    //Test_FMA();
 
     return 0;
 }
@@ -549,7 +694,58 @@ void Test_Mul() {
                                 cout << endl;
                                 cout << sign1 << " " << exp1 << " " << man1 << " " << endl;
                                 cout << sign2 << " " << exp2 << " " << man2 << " " << endl;
-                                //return;                                
+                                return;                                
+                            }
+                        }
+                    }
+                }
+            }
+            cout << "Exp = " << exp1 << endl;
+        }
+    }
+}
+
+void Test_FMA() {
+    cout << "FMA test:" << endl;
+    float16_t a, b, c, d;
+    for (size_t sign1 = 0; sign1 < 2; ++sign1) {
+        for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
+                        for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
+                            for (size_t sign3 = 0; sign3 < 2; ++sign3) {
+                                for (size_t exp3 = 0; exp3 < (1 << expLength) - 1; ++exp3) {
+                                    for (size_t man3 = 0; man3 < (1 << manLength); ++man3) {
+                                        FP16 A(sign1, exp1, man1);
+                                        FP16 B(sign2, exp2, man2);
+                                        FP16 C(sign3, exp3, man3);
+                                        FP16 D = fma4(A, B, C);
+                                        a = A; b = B; c = C;
+                                        d = __float2half(fmaf(__half2float(a), __half2float(b), __half2float(c)));
+                                        if (abs(float16_bites_to_short(D) - float16_bites_to_short(d)) >= 1) {
+                                            cout << "A: ";
+                                            print_bites(A);
+                                            cout << endl;
+                                            cout << "B: ";
+                                            print_bites(B);
+                                            cout << endl;
+                                            cout << "C: ";
+                                            print_bites(C);
+                                            cout << endl;
+                                            cout << "A * B + C: ";
+                                            print_bites(fma4(A, B, C));
+                                            cout << " - My " << endl;
+                                            cout << "a * b + c: ";
+                                            print_bites(d);
+                                            cout << endl;
+                                            cout << sign1 << " " << exp1 << " " << man1 << " " << endl;
+                                            cout << sign2 << " " << exp2 << " " << man2 << " " << endl;
+                                            cout << sign3 << " " << exp3 << " " << man3 << " " << endl;
+                                            //return;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
