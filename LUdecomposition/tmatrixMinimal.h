@@ -397,69 +397,6 @@ public:
         return res;
     }
 
-    void LUdecomposition(TDynamicMatrix& L, TDynamicMatrix& U) const {
-        L = TDynamicMatrix<T>(sz);
-        U = TDynamicMatrix<T>(sz);
-        for (size_t i = 0; i < sz; ++i) {
-            L(i, i) = 1.0;
-        }
-
-        T sum;
-        for (size_t i = 0; i < sz; ++i) {
-            for (size_t j = 0; j < sz; ++j) {
-                sum = 0;
-                if (i <= j) {
-                    for (size_t k = 0; k <= i; ++k) {
-                       sum += L(i, k) * U(k, j);
-                    }
-                    U(i, j) = (*this)(i, j) - sum;
-                }
-                else {
-                    for (size_t k = 0; k <= j; ++k) {
-                        sum += L(i, k) * U(k, j);
-                    }
-                    L(i, j) = ((*this)(i, j) - sum) / U(j, j);
-
-                }
-            }
-        }
-    }
-
-    void LUdecompositionOptimized(TDynamicMatrix& L, TDynamicMatrix& U) const {
-        L = TDynamicMatrix<T>(sz);
-        U = TDynamicMatrix<T>(sz);
-        for (size_t i = 0; i < sz; ++i) {
-            L.pMem[i * sz + i] = 1.0;
-        }
-
-        T sum;
-        for (size_t i = 0; i < sz; ++i) {
-
-#pragma omp parallel for
-            for (long long j = 0; j < sz; ++j) {
-                sum = 0;
-                if (i <= j) {
-
-//#pragma omp simd for
-                   for (size_t k = 0; k <= i; ++k) {
-                        sum += L.pMem[k * sz + i] * U.pMem[j * sz + k];
-                   }
-
-                    U.pMem[j * sz + i] = pMem[j * sz + i] - sum;
-                }
-                else {
-
-//#pragma omp simd for
-                    for (size_t k = 0; k <= j; ++k) {
-                        sum += L.pMem[k * sz + i] * U.pMem[j * sz + k];
-                    }
-
-                    L.pMem[j * sz + i] = (pMem[j * sz + i] - sum) / U.pMem[j * sz + j];
-                }
-            }
-        }
-    }
-
     // ����/�����
     friend istream& operator>>(istream& istr, TDynamicMatrix& m)
     {
@@ -501,7 +438,7 @@ public:
     }
 
     void LUdecompositionV3(TDynamicMatrix& L, TDynamicMatrix& U, long long step) const {
-        long long stepr = step; // 64 for 80Kbyte L1 cash 
+        long long stepr = step; // 64 for 80Kbyte L1 cash // 10 for my machine
         T sum;
         long long i, j, k, r, nr;
 
@@ -517,8 +454,6 @@ public:
 
         // MAIN CYCLE (as recursive algorithm)
         for (r = 0; r < sz; r += stepr) {
-//            cout << "r: " << r << endl << A << endl << L << endl << U << endl;
-//            cout << "r: " << r << endl;
             nr = sz - r - stepr;
             if (nr < 0) break;
 
@@ -546,8 +481,6 @@ public:
                 }
             }
 
-//            cout << "L:\n" << L << endl << "U:\n" << U << endl;
-
             // SOLVING NR OF TRIANGLE SYSTEMS
             for (j = 0; j < nr; ++j) {
                 // L - lower triangle system
@@ -560,20 +493,14 @@ public:
                 }
                 // U - upper triangle system
 //#pragma omp parallel for
-//                cout << "started solving " << j << " system" << endl;
                 for (i = 0; i < stepr; ++i) { // i = stepr - 1; i >= 0; --i
                     L.pMem[(i + r) * sz + j + r + stepr] = A.pMem[(i + r) * sz + j + r + stepr];
-//                    cout << "L as A: " << L.pMem[(i + r) * sz + j + r + stepr] << endl;
                     for (k = i - 1; k >= 0; --k) {
                         L.pMem[(i + r) * sz + j + r + stepr] -= L.pMem[(k + r) * sz + j + r + stepr] * U.pMem[(i + r) * sz + k + r];
                     }
-//                    cout << "L after substracting: " << L.pMem[(i + r) * sz + j + r + stepr] << endl;
                     L.pMem[(i + r) * sz + j + r + stepr] /= U.pMem[(i + r) * sz + i + r];
-//                    cout << "End L: " << L.pMem[(i + r) * sz + j + r + stepr] << endl;
                 }
             }
-
-//            cout << "L:\n" << L << endl << "U:\n" << U << endl;
 
             // REDUCTION matrix computing
 //#pragma omp parallel
@@ -587,11 +514,8 @@ public:
                     }
                 }
             }
-
-//            cout << "A:\n" << A << endl;
         }
-        
-//        cout << "L:\n" << L << endl << "U:\n" << U << endl;
+    
 
         r = sz % stepr;
         nr = sz - r;
@@ -730,217 +654,5 @@ public:
 //        free(input);
     }
 };
-
-template <typename T>
-void printSimpleMatrix(T* A, size_t m, size_t n) {
-    for (size_t i = 0; i < m; ++i) {
-        for (size_t j = 0; j < n; ++j) {
-            std::cout << std::setw(15) << double(A[j * m + i]);
-        }
-        std::cout << std::endl;
-    }
-}
-
-template <typename T>
-void LUdecompositionV2(TDynamicMatrix<T>& A) {
-    size_t r = 128ull;
-    size_t nr = A.sz - r;
-    long long i, j, k;
-    
-    // CHECK ON SIZE
-    if (A.sz <= r) {
-        r = A.sz;
-        T* L = (T*)malloc(sizeof(T) * r * r);
-        T* U = (T*)malloc(sizeof(T) * r * r);
-
-        // GAUSS METHOD FOR L U
-        for (i = 0; i < r * r; ++i) {
-            L[i] = 0.0;
-            U[i] = 0.0;
-        }
-        for (i = 0; i < r; ++i) {
-            L[i * r + i] = 1.0;
-        }
-        T sum;
-        for (i = 0; i < r; ++i) {
-#pragma omp parallel for
-            for (j = 0; j < r; ++j) {
-                sum = 0;
-                if (i <= j) {
-                    //#pragma omp simd for
-                    for (k = 0; k <= i; ++k) {
-                        sum += L[k * r + i] * U[j * r + k];
-                    }
-
-                    U[j * r + i] = A.pMem[j * A.sz + i] - sum;
-                }
-                else {
-                    //#pragma omp simd for
-                    for (k = 0; k <= j; ++k) {
-                        sum += L[k * r + i] * U[j * r + k];
-                    }
-
-                    L[j * r + i] = (A.pMem[j * A.sz + i] - sum) / U[j * r + j];
-                }
-            }
-        }
-
-        // Compress
-        for (j = 0; j < r; ++j) {
-            for (i = j + 1; i < r; ++i) {
-                A.pMem[j * A.sz + i] = L[r * j + i];
-            }
-        }
-        for (j = 0; j < r; ++j) {
-            for (i = 0; i <= j; ++i) {
-                A.pMem[j * A.sz + i] = U[r * j + i];
-            }
-        }
-
-        free(L);
-        free(U);
-        return;
-    }
-
-    // ALLOCATE MEMORY
-    T* L11 = (T*)malloc(sizeof(T) * r * r);
-    T* U11 = (T*)malloc(sizeof(T) * r * r);
-    T* L21 = (T*)malloc(sizeof(T) * r * nr);
-    T* U12 = (T*)malloc(sizeof(T) * nr * r);
-//    T* L22 = (T*)malloc(sizeof(T) * nr * nr);
-//    T* U22 = (T*)malloc(sizeof(T) * nr * nr);
-    TDynamicMatrix<T> A22(nr);
-
-    // GAUSS METHOD FOR L11 U11
-    for (i = 0; i < r * r; ++i) {
-        L11[i] = 0.0;
-        U11[i] = 0.0;
-    }
-    for (i = 0; i < r; ++i) {
-        L11[i * r + i] = 1.0;
-    }
-    T sum;
-    for (i = 0; i < r; ++i) {
-#pragma omp parallel for
-        for (j = 0; j < r; ++j) {
-            sum = 0;
-            if (i <= j) {
-                //#pragma omp simd for
-                for (k = 0; k <= i; ++k) {
-                    sum += L11[k * r + i] * U11[j * r + k];
-                }
-
-                U11[j * r + i] = A.pMem[j * A.sz + i] - sum;
-            }
-            else {
-                //#pragma omp simd for
-                for (k = 0; k <= j; ++k) {
-                    sum += L11[k * r + i] * U11[j * r + k];
-                }
-
-                L11[j * r + i] = (A.pMem[j * A.sz + i] - sum) / U11[j * r + j];
-            }
-        }
-    }
-
-//    cout << "L11 and U11" << endl;
-//    printSimpleMatrix(L11, r, r);
-//    cout << endl;
-//    printSimpleMatrix(U11, r, r);
-//    cout << endl;
-
-    // SOLVING NR OF TRIANGLE SYSTEMS
-    for (j = 0; j < nr; ++j) {
-        // L - lower triangle system
-        for (i = 0; i < r; ++i) {
-            U12[j * r + i] = A.pMem[(j + r) * A.sz + i];
-            for (k = i - 1; k >= 0; --k) {
-                U12[j * r + i] -= U12[j * r + k] * L11[k * r + i];
-            }
-        }
-
-        // U - upper triangle system
-        for (i = r - 1; i >= 0; --i) {
-            L21[i * r + j] = A.pMem[i * A.sz + j + r];
-            for (k = i + 1; k < r; ++k) {
-                L21[i * r + j] -= L21[k * r + j] * U11[i * r + k];
-            }
-            L21[i * r + j] = L21[i * r + j] / U11[i * r + i];
-        }
-    }
-
-//    cout << "L21 and U12" << endl;
-//    printSimpleMatrix(L21, nr, r);
-//    cout << endl;
-//    printSimpleMatrix(U12, r, nr);
-//    cout << endl;
-
-    // A22 - reduced matrix calculating
-    // GEMM usage required!
-    for (i = 0; i < nr; ++i) {
-        for (k = 0; k < r; ++k) {
-            for (j = 0; j < nr; ++j) {
-                A22.pMem[j * nr + i] += L21[k * nr + i] * U12[j * r + k];
-            }
-        }
-    }
-//    cout << "L21*U12" << endl;
-//    printSimpleMatrix(A22.pMem, nr, nr);
-//    cout << endl;
-    for (j = 0; j < nr; ++j) {
-        for (i = 0; i < nr; ++i) {
-            A22.pMem[j * nr + i] = A.pMem[(r + j) * A.sz + i + r] - A22.pMem[j * nr + i];
-        }
-    }
-//    cout << "A22 reducted" << endl;
-//    printSimpleMatrix(A22.pMem, nr, nr);
-//    cout << endl;
-
-    // RECURSIVE COMPUTATION OF A22 = L22*U22
-    //...
-    LUdecompositionV2(A22);
-
-    // LUcompress
-    for (j = 0; j < A.sz; ++j) {
-        for (i = 0; i < A.sz; ++i) {
-            A.pMem[j * A.sz + i] = 0.0;
-        }
-    }
-    for (j = 0; j < r; ++j) {
-        for (i = j + 1; i < r; ++i) {
-            A.pMem[j * A.sz + i] = L11[r * j + i];
-        }
-    }
-    for (j = 0; j < r; ++j) {
-        for (i = 0; i <= j; ++i) {
-            A.pMem[j * A.sz + i] = U11[r * j + i];
-        }
-    }
-    for (j = 0; j < nr; ++j) {
-        for (i = 0; i < nr; ++i) {
-            A.pMem[(r + j) * A.sz + i + r] = A22.pMem[j * nr + i];
-        }
-    }
-    for (j = 0; j < r; ++j) {
-        for (i = 0; i < nr; ++i) {
-            A.pMem[j * A.sz + i + r] = L21[nr * j + i];
-        }
-    }
-    for (j = 0; j < nr; ++j) {
-        for (i = 0; i < r; ++i) {
-            A.pMem[(r + j) * A.sz + i] = U12[r * j + i];
-        }
-    }
-//    cout << "A result" << endl;
-//    printSimpleMatrix(A.pMem, A.sz, A.sz);
-//    cout << endl;
-
-    free(L11);
-    free(U11);
-    free(L21);
-    free(U12);
-//    free(L22);
-//    free(U22);
-}
 
 #endif
