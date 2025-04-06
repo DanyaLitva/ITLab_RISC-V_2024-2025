@@ -1,13 +1,14 @@
 #pragma once
-// ННГУ, ИИТММ, Курс "Алгоритмы и структуры данных"
+// пїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ"
 //
-// Copyright (c) Сысоев А.В.
+// Copyright (c) пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ.пїЅ.
 //
 //
 
 #ifndef __TDynamicMatrix_H__
 #define __TDynamicMatrix_H__
 #define _CRT_SECURE_NO_WARNINGS
+#define _CRT_NONSTDC_NO_WARNINGS
 
 //#include <cmath>
 #include <vector>
@@ -24,8 +25,8 @@ using namespace std;
 const long int MAX_VECTOR_SIZE = 32786 * 32786;
 const int MAX_MATRIX_SIZE = 32786;
 
-// Динамический вектор - 
-// шаблонный вектор на динамической памяти
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ - 
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 template<typename T>
 class TDynamicVector
 {
@@ -34,7 +35,7 @@ public:
     T* pMem;
     TDynamicVector(size_t size = 1) : sz(size)
     {
-        pMem = new T[sz]();// {}; // У типа T д.б. констуктор по умолчанию
+        pMem = new T[sz]();// {}; // пїЅ пїЅпїЅпїЅпїЅ T пїЅ.пїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     }
     TDynamicVector(T* arr, size_t s) : sz(s)
     {
@@ -84,7 +85,7 @@ public:
 
     long long size() const noexcept { return sz; }
 
-    // индексация
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     T& operator[](size_t ind)
     {
         return pMem[ind];
@@ -93,7 +94,7 @@ public:
     {
         return pMem[ind];
     }
-    // индексация с контролем
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     T& at(size_t ind)
     {
         if (ind >= sz) throw out_of_range("Out of range");
@@ -105,7 +106,7 @@ public:
         return pMem[ind];
     }
 
-    // сравнение
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     bool operator==(const TDynamicVector& v) const noexcept
     {
         if (sz != v.sz) return false;
@@ -120,7 +121,7 @@ public:
         return !(*this == v);
     }
 
-    // скалярные операции
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     TDynamicVector operator+(T val)
     {
         TDynamicVector tmp(sz);
@@ -143,7 +144,7 @@ public:
         return tmp;
     }
 
-    // векторные операции
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     TDynamicVector operator+(const TDynamicVector& v) const
     {
         if (sz != v.sz) throw length_error("Incompatible sizes");
@@ -175,17 +176,17 @@ public:
         std::swap(lhs.pMem, rhs.pMem);
     }
 
-    // ввод/вывод
+    // пїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅ
     friend istream& operator>>(istream& istr, TDynamicVector& v)
     {
         for (size_t i = 0; i < v.sz; i++)
-            istr >> v.pMem[i]; // требуется оператор>> для типа T
+            istr >> v.pMem[i]; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ>> пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ T
         return istr;
     }
     friend ostream& operator<<(ostream& ostr, const TDynamicVector& v)
     {
         for (size_t i = 0; i < v.sz; i++)
-            ostr << std::setw(15) << v.pMem[i]; // требуется оператор<< для типа T
+            ostr << std::setw(15) << v.pMem[i]; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ<< пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ T
         return ostr;
     }
 
@@ -215,8 +216,8 @@ public:
 };
 
 
-// Динамическая матрица - 
-// шаблонная матрица на динамической памяти
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ - 
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 template<typename T>
 class TDynamicMatrix
 {
@@ -262,7 +263,7 @@ public:
         return *this;
     }
 
-    // сравнение
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     bool operator==(const TDynamicMatrix& m) const noexcept
     {
         if (m.sz != sz) return false;
@@ -277,7 +278,7 @@ public:
         return !(*this == m);
     }
 
-    // матрично-скалярные операции
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     TDynamicMatrix<T> operator*(const T& val)
     {
         TDynamicMatrix<T> tmp(sz);
@@ -298,7 +299,7 @@ public:
         return pMem[j * sz + i];
     }
 
-    // матрично-векторные операции
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     TDynamicVector<T> operator*(const TDynamicVector<T>& v)
     {
         if (sz != v.size()) throw logic_error("ERR");
@@ -314,7 +315,7 @@ public:
         return tmp;
     }
 
-    // матрично-матричные операции
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     TDynamicMatrix operator+(const TDynamicMatrix& m)
     {
         if (sz != m.sz) throw logic_error("ERR");
@@ -459,7 +460,7 @@ public:
         }
     }
 
-    // ввод/вывод
+    // пїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅ
     friend istream& operator>>(istream& istr, TDynamicMatrix& m)
     {
         for (size_t i = 0; i < m.sz; ++i) {
@@ -499,8 +500,8 @@ public:
         }
     }
 
-    void LUdecompositionV3(TDynamicMatrix& L, TDynamicMatrix& U) const {
-        long long stepr = 2; // 64 for 80Kbyte L1 cash 
+    void LUdecompositionV3(TDynamicMatrix& L, TDynamicMatrix& U, long long step) const {
+        long long stepr = step; // 64 for 80Kbyte L1 cash 
         T sum;
         long long i, j, k, r, nr;
 
@@ -545,6 +546,8 @@ public:
                 }
             }
 
+//            cout << "L:\n" << L << endl << "U:\n" << U << endl;
+
             // SOLVING NR OF TRIANGLE SYSTEMS
             for (j = 0; j < nr; ++j) {
                 // L - lower triangle system
@@ -557,14 +560,20 @@ public:
                 }
                 // U - upper triangle system
 //#pragma omp parallel for
-                for (i = stepr - 1; i >= 0; --i) {
+//                cout << "started solving " << j << " system" << endl;
+                for (i = 0; i < stepr; ++i) { // i = stepr - 1; i >= 0; --i
                     L.pMem[(i + r) * sz + j + r + stepr] = A.pMem[(i + r) * sz + j + r + stepr];
-                    for (k = i + 1; k < stepr; ++k) {
+//                    cout << "L as A: " << L.pMem[(i + r) * sz + j + r + stepr] << endl;
+                    for (k = i - 1; k >= 0; --k) {
                         L.pMem[(i + r) * sz + j + r + stepr] -= L.pMem[(k + r) * sz + j + r + stepr] * U.pMem[(i + r) * sz + k + r];
                     }
-                    L.pMem[(i + r) * sz + j + r + stepr] = L.pMem[(i + r) * sz + j + r + stepr] / U.pMem[(i + r) * sz + i + r];
+//                    cout << "L after substracting: " << L.pMem[(i + r) * sz + j + r + stepr] << endl;
+                    L.pMem[(i + r) * sz + j + r + stepr] /= U.pMem[(i + r) * sz + i + r];
+//                    cout << "End L: " << L.pMem[(i + r) * sz + j + r + stepr] << endl;
                 }
             }
+
+//            cout << "L:\n" << L << endl << "U:\n" << U << endl;
 
             // REDUCTION matrix computing
 //#pragma omp parallel
@@ -572,19 +581,23 @@ public:
             for (j = 0; j < nr; ++j) {
 //#pragma omp for
                 for (i = 0; i < nr; ++i) {
-#pragma omp simd
+//#pragma omp simd
                     for (k = 0; k < stepr; ++k) {
                         A.pMem[(j + r + stepr) * sz + i + r + stepr] -= L.pMem[(k + r) * sz + i + r + stepr] * U.pMem[(j + r + stepr) * sz + k + r];
                     }
                 }
             }
+
+//            cout << "A:\n" << A << endl;
         }
+        
+//        cout << "L:\n" << L << endl << "U:\n" << U << endl;
 
         r = sz % stepr;
         nr = sz - r;
         // Gauss for a bottom-left matrix
         for (i = 0; i < r; ++i) {
-//#pragma omp parallel for // CREATES AN ERROR WHEN TURNED ON!!!!!!!!!!!!!!! WHY????????????????
+//#pragma omp parallel for
             for (j = 0; j < r; ++j) {
                 sum = 0;
                 if (i <= j) {
@@ -607,15 +620,16 @@ public:
         }
     }
 
-    TDynamicVector<T> solver(const TDynamicVector<T>& b, int version) const {
+    TDynamicVector<T> solver(const TDynamicVector<T>& b, long long step) const {
         TDynamicMatrix<T> A(sz);
+        int version = 3;
         A = *this;
         if (version == 2) LUdecompositionV2(A);
         TDynamicMatrix<T> L(sz), U(sz);
         if (version == 0) LUdecomposition(L, U);
         if (version == 1) LUdecompositionOptimized(L, U);
         if (version == 2) A.LUdecompress(L, U); // can reduce memory usage!
-        if (version == 3) A.LUdecompositionV3(L, U);
+        if (version == 3) A.LUdecompositionV3(L, U, step);
         TDynamicVector<T> y(sz);
         // Ly = b, L - upper triangle
         for (size_t i = 0; i < sz; ++i) {
