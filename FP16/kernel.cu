@@ -41,6 +41,36 @@ unsigned short float16_bites_to_short(float16_t f) {
     return temp;
 }
 
+float fp16_to_float(uint16_t h) {
+    uint32_t sign = (h >> 15) & 0x1;
+    uint32_t exponent = (h >> 10) & 0x1F;
+    uint32_t mantissa = h & 0x3FF;
+    uint32_t f;
+    if (exponent == 0) {
+        if (mantissa == 0) {
+            f = sign << 31;
+        }
+        else {
+            exponent = 127 - 14;
+            while ((mantissa & 0x400) == 0) {
+                mantissa <<= 1;
+                exponent--;
+            }
+            mantissa &= 0x3FF;
+            f = (sign << 31) | (exponent << 23) | (mantissa << 13);
+        }
+    }
+    else if (exponent == 0x1F) {
+        f = (sign << 31) | 0x7F800000 | (mantissa << 13);
+    }
+    else {
+        exponent += (127 - 15);
+        f = (sign << 31) | (exponent << 23) | (mantissa << 13);
+    }
+    return *reinterpret_cast<float*>(&f);
+}
+
+
 class FP16 {
 private:
     unsigned int man : manLength;
@@ -48,14 +78,7 @@ private:
     unsigned int sign : signLength;
 
 public:
-    FP16(int _sign = 0, int _exp = 0, int _man = 0) :sign(_sign), exp(_exp), man(_man) {}
-
-    FP16(float16_t f) {
-        unsigned short bits = float16_bites_to_short(f);
-        sign = (bits >> 15) & 0x1;
-        exp = (bits >> manLength) & ((1 << expLength) - 1);
-        man = bits & ((1 << manLength) - 1);
-    }
+    FP16(int _sign, int _exp, int _man) :sign(_sign), exp(_exp), man(_man) {}
 
     bool IsSubnormal() { return (exp == 0) && (man != 0); }
     bool IsInf() { return exp == ((1 << expLength) - 1) && (man == 0); }
@@ -82,9 +105,22 @@ public:
         return *this;
     }
 
+    FP16& operator=(uint16_t temp) {
+        sign = (temp >> 15) & 0x1;    
+        exp = (temp >> 10) & 0x1F;    
+        man = temp & 0x3FF;    
+        return *this;
+    }
+
     uint16_t get_int() {
         uint16_t temp = (sign << (manLength + expLength)) | (exp << manLength) | man;
         return temp;
+    }
+
+    FP16(uint16_t temp = 0) {
+        sign = temp >> (manLength+expLength);                         
+        exp = (temp >> manLength) & ((1 << expLength) - 1);       
+        man = temp & ((1 << manLength) - 1);              
     }
 
     FP16 operator+(FP16 right) {
@@ -396,15 +432,220 @@ public:
         return Res;
     }
 
+    friend uint16_t mul_half(uint16_t a, uint16_t b);
+
+    friend uint16_t usub_half(uint16_t temp);
+
     friend FP16 fma4(FP16 a, FP16 b, FP16 c);
+    
+    friend uint16_t fma_half(uint16_t a, uint16_t b, uint16_t c);
+
+    friend std::ostream& operator<<(std::ostream& os, FP16 num) {
+        float f = fp16_to_float(num.get_int());
+        os << f;
+        return os;
+    }
 
     FP16 operator/(FP16 right) {
         FP16 Res;
+        uint16_t l = get_int();
+        uint16_t r = right.get_int();
+        uint16_t res = (l ^ r) & 0x8000;
+        uint16_t el = l & 0x7C00;
+        uint16_t er = r & 0x7C00;
+        int16_t eres = 0;
+        uint16_t ml = l & 0x03FF;
+        uint16_t mr = r & 0x03FF;
+        bool coutflag = false;
+
+        // Handle special cases (NaN, Inf, zero)
+        if ((el == 0x7C00) || (er == 0x7C00) || (r == 0) || (r == 0x8000) || (l == 0) || (l == 0x8000)) {
+            if (el == 0x7C00) { // left is inf or nan
+                if (ml != 0) {// left is nan
+                    Res = res + (l & 0x7FFF);
+                    return Res;
+                }
+                else if (er == 0x7C00) { // right is inf or nan
+                    Res = res + 0x7C01; // inf / inf = nan
+                    return Res;
+                }
+                else {
+                    Res = res + (l & 0x7FFF);
+                    return Res; 
+                }
+            }
+            if (er == 0x7C00) { // right is inf or nan
+                if (mr != 0) { // is nan
+                    Res = res + (r & 0x7FFF);
+                    return Res;
+                }
+                else { // is inf
+                    Res = res;
+                    return Res; // zero
+                }
+            }
+
+            if ((r == 0) || (r == 0x8000)) { // right is zero
+                if ((l == 0) || (l == 0x8000)) { // left is zero
+                    Res = res | 0x7C01;
+                    return Res;
+                }
+                else
+                {
+                    Res = res | 0x7C00;
+                    return Res;
+                }
+            }
+
+            if ((l == 0) || (l == 0x8000)) {
+                Res = res;
+                return Res;
+            }
+        }
 
 
+        eres = (el >> 10) + 14; 
+        if (er == 0) {
+            --eres; // adjust for subnormal
+            while (mr < 0x0400) { // normalize right
+                ++eres;
+                mr <<= 1;
+            }
+            mr -= 0x0400;
+        }
+        eres -= (er >> 10);
+        if (el == 0) {
+            ++eres; // adjust for subnormal
+            while (ml < 0x0400) { // normalize left
+                --eres;
+                ml <<= 1;
+            }
+            ml -= 0x0400;
+        }
 
+
+        r = mr + (15u << 10); // FP16 bias = 15
+        l = ml + (15u << 10);
+
+
+        r = usub_half(r);
+        uint16_t x = fma_half(14216, r, 15782); // 24/17 - 8/17*d
+        uint16_t e;
+
+        e = fma_half(r, x, (uint16_t)0x3C00); // 1 iteration
+        x = fma_half(x, e, x);
+        e = fma_half(r, x, (uint16_t)0x3C00); // 2 iteration
+        x = fma_half(x, e, x);
+
+
+        uint16_t y = mul_half(l, x);
+        e = fma_half(r, y, l);
+        y = fma_half(e, x, y);
+        e = fma_half(r, y, l);
+        uint16_t tmpy = fma_half(e, x, y);
+        bool dy = y != tmpy;
+        bool de = (e >> 15) == 0x1;
+        y = tmpy;
+
+
+        r = usub_half(r);
+        eres += (y >> 10) - 14;
+
+
+        if (eres >= 31) 
+            res += 0x7C00;
+        else if (eres > 0) {
+            res += (eres << 10) + (y & 0x03FF);
+        }
+        else if (eres >= -10) { 
+            y = (y & 0x03FF) + 0x0400;
+            uint16_t shift = 1u << (-eres + 1);
+            if (e == 0x0 || ((y & (shift - 1)) != (shift >> 1))) {
+                res += (y >> (-eres + 1)) +
+                    ((y & (shift - 1)) > (shift >> 1)) +
+                    (((y & ((shift << 1) - 1))) == (shift + (shift >> 1)));
+            }
+            else if (dy && de || !dy && !de) {
+                res += (y >> (-eres + 1)) + 1;
+            }
+            else if (dy && !de || !dy && de) {
+                res += (y >> (-eres + 1)) + 0;
+            }
+        }
+
+        Res = res;
+        if ((Res.exp!=31) && (((this->exp == 0) && (right.exp != 0)) || (this->man == 0)) && (right.man == 1023) && (Res.man == 0) && (Res.exp != 0)) Res.man++;
         return Res;
     }
+
+    FP16(double d) {
+        uint64_t bits = *reinterpret_cast<uint64_t*>(&d);
+        sign = (bits >> 63) & 0x1;
+        int64_t exp_double = (bits >> 52) & 0x7FF;
+        uint64_t man_double = bits & 0x0FFFFFFFFFFFFF;
+
+        if (exp_double == 0x7FF) {
+            if (man_double == 0) {
+                exp = (1 << expLength) - 1;
+                man = 0;
+            }
+            else {
+                exp = (1 << expLength) - 1;
+                man = 1;
+            }
+            return;
+        }
+
+        if (exp_double == 0) {
+            if (man_double == 0) {
+                exp = 0;
+                man = 0;
+                return;
+            }
+            exp_double = 1;
+            while ((man_double & 0x8000000000000) == 0) {
+                man_double <<= 1;
+                exp_double--;
+            }
+            man_double &= 0x7FFFFFFFFFFFF;
+        }
+        else {
+            man_double |= 0x10000000000000;
+        }
+
+        int64_t exp16 = exp_double - 1023 + shiftExp;
+
+        if (exp16 >= (1 << expLength) - 1) {
+            exp = (1 << expLength) - 1;
+            man = 0;
+            return;
+        }
+        else if (exp16 <= 0) {
+            if (exp16 < -manLength) {
+                exp = 0;
+                man = 0;
+                return;
+            }
+            uint16_t man16 = static_cast<uint16_t>((man_double >> (52 - manLength - exp16)) | ((man_double >> (52 - manLength - exp16 - 1)) & 1));
+            exp = 0;
+            man = man16;
+            return;
+        }
+
+        exp = static_cast<uint16_t>(exp16);
+        uint64_t rounding = (man_double >> (52 - manLength - 1)) & 1;
+        man = static_cast<uint16_t>((man_double >> (52 - manLength)) + rounding);
+
+        if (man >= (1 << manLength)) {
+            man >>= 1;
+            exp++;
+            if (exp >= (1 << expLength) - 1) {
+                exp = (1 << expLength) - 1;
+                man = 0;
+            }
+        }
+    }
+
 };
 
 
@@ -590,7 +831,26 @@ FP16 fma4(FP16 a, FP16 b, FP16 c) {
 
 }
 
+uint16_t fma_half(uint16_t a, uint16_t b, uint16_t c) {
+    FP16 A, B, C;
+    A = a;
+    B = b;
+    C = c;
+    return (fma4(A, B, C).get_int());
+}
 
+uint16_t mul_half(uint16_t a, uint16_t b) {
+    FP16 A, B;
+    A = a;
+    B = b;
+    return ((A * B).get_int());
+}
+
+uint16_t usub_half(uint16_t temp) {
+    if ((temp >> 15) == 1) temp &= ((1 << 15) - 1);
+    else temp |= (1 << 15);
+    return temp;
+}
 
 void print_bites(FP16 a) { a.printFP16_bites(); }
 void print_bites(float16_t a) { print_float16_bites(a); }
@@ -599,20 +859,18 @@ void Test_Add();
 void Test_Sub();
 void Test_Mul();
 void Test_FMA();
+void Test_Div();
 void TimeTest();
 
 using namespace std;
 int main() {
-    FP16 A(0, 15, 60);
-    FP16 B(0, 15,264);
-    FP16 C(1, 30, 1020);
-    FP16 D(1, 17, 1);
+    FP16 A(1, 0, 100);
+    FP16 B(0, 18, 1023);
+    FP16 C(1, 14, 0);
    
     float16_t a = A;
     float16_t b = B;
     float16_t c = C;
-    float16_t d = D;
-
     cout << "A: "; print_bites(A); cout << ", " << __half2float(A) << endl;
     cout << "B: "; print_bites(B); cout << ", " << __half2float(B) << endl;
     cout << "A + B: "; print_bites(A + B); cout << " - My" << ", " << __half2float(A + B) << endl;
@@ -625,13 +883,18 @@ int main() {
     cout << "a * b + c: "; print_bites(a * b + c); cout << ", " << __half2float(a * b + c) << endl;
     cout << "fma4: A * B + C: "; print_bites(fma4(A,B,C)); cout << ", " << __half2float(fma4(A,B,C)) << " - My" << endl;
     cout << "fma4: a * b + c: "; print_bites(__float2half(fmaf(__half2float(a), __half2float(b), __half2float(c)))); cout << ", " << __half2float(__float2half(fmaf(__half2float(a), __half2float(b), __half2float(c)))) << endl;
-
     cout << "A / B: "; print_bites(A / B); cout << " - My" << ", " << __half2float(A / B) << endl;
     cout << "a / b: "; print_bites(a / b); cout << ", " << __half2float(a / b) << endl;
 
+
+    FP16 E(62000.);
+    cout << E;
+    double d = (double)E;
+    cout << d;
     //Test_Sub();
     //Test_Add();
     //Test_Mul();
+    //Test_Div();
     //Test_FMA();
    // Test_FMA();
 
@@ -801,6 +1064,46 @@ void Test_FMA() {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+            cout << "Exp = " << exp1 << endl;
+        }
+    }
+}
+
+void Test_Div() {
+    cout << "Division test:" << endl;
+    float16_t a, b, c;
+    for (size_t sign1 = 0; sign1 < 1; ++sign1) {
+        for (size_t exp1 = 0; exp1 < (1 << expLength) - 1; ++exp1) {
+            for (size_t man1 = 0; man1 < (1 << manLength); ++man1) {
+                for (size_t sign2 = 0; sign2 < 1; ++sign2) {
+                    for (size_t exp2 = 0; exp2 < (1 << expLength) - 1; ++exp2) {
+                        for (size_t man2 = 0; man2 < (1 << manLength); ++man2) {
+                            FP16 A(sign1, exp1, man1);
+                            FP16 B(sign2, exp2, man2);
+                            FP16 C = A / B;
+                            a = A; b = B;
+                            c = a / b;
+                            if (abs(float16_bites_to_short(C) - float16_bites_to_short(c)) >= 1) {
+                                cout << "A: ";
+                                print_bites(A);
+                                cout << endl;
+                                cout << "B: ";
+                                print_bites(B);
+                                cout << endl;
+                                cout << "A / B: ";
+                                print_bites(C);
+                                cout << " - My " << endl;
+                                cout << "a / b: ";
+                                print_bites(c);
+                                cout << endl;
+                                cout << sign1 << " " << exp1 << " " << man1 << " " << endl;
+                                cout << sign2 << " " << exp2 << " " << man2 << " " << endl;
+                                //return;
                             }
                         }
                     }
