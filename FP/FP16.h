@@ -13,7 +13,7 @@ private:
     unsigned int sign : signLength;
 
 public:
-    FP16(int _sign, int _exp, int _man):sign(_sign), exp(_exp), man(_man) {}
+    FP16(int _sign = 0, int _exp = 0, int _man = 0):sign(_sign), exp(_exp), man(_man) {}
     FP16(const FP16& right) :sign(right.sign), exp(right.exp), man(right.man) {}
     bool IsSubnormal() const noexcept;
     bool IsInf() const noexcept;
@@ -24,7 +24,7 @@ public:
     FP16& operator=(FP16& N) noexcept;
     void set_from_uint(uint16_t temp) noexcept;
     uint16_t get_int() const noexcept;
-    FP16(uint16_t temp = 0) noexcept;
+    //FP16(uint16_t temp = 0) noexcept;
     FP16 operator+(FP16 right) const noexcept;
     FP16 operator-(FP16 right) const noexcept;
     FP16 operator*(FP16 right) const noexcept;
@@ -45,6 +45,17 @@ public:
     FP16& operator*=(const FP16& right) noexcept;
     FP16& operator/=(const FP16& right) noexcept;
     FP16 operator-() noexcept;
+    FP16& operator=(float N) noexcept;
+    FP16& operator=(double N) noexcept;
+    FP16(float num) noexcept{
+        *this = num;
+    }
+    FP16(double num) noexcept{
+        *this = num;
+    }
+   
+    operator double() const noexcept;
+    operator float() const noexcept;
 };
 
 

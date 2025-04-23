@@ -36,11 +36,11 @@ uint16_t FP16::get_int() const noexcept {
     return temp;
 }
 
-FP16::FP16(uint16_t temp) noexcept {
-    sign = temp >> (manLength + expLength);
-    exp = (temp >> manLength) & ((1 << expLength) - 1);
-    man = temp & ((1 << manLength) - 1);
-}
+//FP16::FP16(uint16_t temp) noexcept {
+//    sign = temp >> (manLength + expLength);
+//    exp = (temp >> manLength) & ((1 << expLength) - 1);
+//    man = temp & ((1 << manLength) - 1);
+//}
 
 FP16 FP16::operator+(FP16 right) const noexcept {
     if (IsNull()) return right;
@@ -512,25 +512,25 @@ bool FP16::operator <= (const FP16& right) const noexcept {
 }
 
 FP16& FP16::operator+=(const FP16& right) noexcept {
-    FP16 temp = (*this + right).sign;
+    FP16 temp = (*this + right);
     *this = temp;
     return *this;
 }
 
 FP16& FP16::operator-=(const FP16& right) noexcept {
-    FP16 temp = (*this - right).sign;
+    FP16 temp = (*this - right);
     *this = temp;
     return *this;
 }
 
 FP16& FP16::operator*=(const FP16& right) noexcept {
-    FP16 temp = (*this * right).sign;
+    FP16 temp = (*this * right);
     *this = temp;
     return *this;
 }
 
 FP16& FP16::operator/=(const FP16& right) noexcept {
-    FP16 temp = (*this / right).sign;
+    FP16 temp = (*this / right);
     *this = temp;
     return *this;
 }
@@ -727,3 +727,100 @@ std::ostream& operator<<(std::ostream& os, FP16 num) noexcept {
 }
 
 
+FP16& FP16::operator=(float N) noexcept {
+    if (N == 0.0f) {
+        sign = std::signbit(N) ? 1 : 0;
+        exp = 0;
+        man = 0;
+        return *this;
+    }
+
+    uint32_t float_bits;
+    std::memcpy(&float_bits, &N, sizeof(float));
+    
+    sign = (float_bits >> 31) & 0x1;
+    int32_t float_exp = (float_bits >> 23) & 0xFF;
+    uint32_t float_man = float_bits & 0x7FFFFF;
+
+
+    if (float_exp == 0xFF) {
+        exp = (1 << expLength) - 1;
+        man = float_man ? 1 : 0;
+        return *this;
+    }
+
+
+    if (float_exp == 0) {
+        float_exp = -126;
+
+    } else {
+        float_exp -= 127;
+        float_man |= 0x800000; 
+    }
+
+    int32_t new_exp = float_exp + shiftExp;
+    uint32_t new_man = float_man >> 13;
+
+
+    if (new_exp <= 0) {
+        if (new_exp < -10) {
+            exp = 0;
+            man = 0;
+            return *this;
+        }
+
+
+        exp = 0;
+        uint32_t shift = 1 - new_exp;
+        new_man = float_man >> (shift + 13);
+        
+
+        uint32_t round_bit = (float_man >> (shift + 12)) & 1;
+        uint32_t sticky = (float_man << (32 - (shift + 12))) != 0;
+        new_man += (round_bit & (new_man | sticky));
+
+        if (new_man >= (1 << manLength)) {
+            new_man = 0;
+            exp = 1;
+        }
+
+        man = new_man;
+        return *this;
+    }
+
+
+    exp = new_exp;
+    man = new_man;
+
+
+    uint32_t round_bit = (float_man >> 12) & 1;
+    uint32_t sticky = (float_man & 0xFFF) != 0;
+    man += (round_bit & (man | sticky));
+
+
+    if (man >= (1 << manLength)) {
+        man >>= 1;
+        exp++;
+        if (exp >= ((1 << expLength) - 1)) {
+            exp = (1 << expLength) - 1;
+            man = 0;
+        }
+    }
+
+    return *this;
+}
+
+FP16& FP16::operator=(double N) noexcept{
+    *this = float(N);
+    return *this;
+}
+
+FP16::operator double() const noexcept {
+    double result = float(*this);
+    return result;
+}
+
+FP16::operator float() const noexcept {
+    float result = fp16_to_float(get_int());
+    return result;
+}
