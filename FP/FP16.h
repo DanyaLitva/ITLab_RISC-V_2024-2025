@@ -21,7 +21,7 @@ public:
     bool IsNan() const noexcept;
     void printFP16_bites() const noexcept;
     //operator float16_t() const noexcept;
-    FP16& operator=(FP16& N) noexcept;
+    FP16& operator=(const FP16& N) noexcept;
     void set_from_uint(uint16_t temp) noexcept;
     uint16_t get_int() const noexcept;
     //FP16(uint16_t temp = 0) noexcept;

@@ -16,7 +16,7 @@ void FP16::printFP16_bites() const noexcept{
     return *reinterpret_cast<float16_t*>(&bits);
 }*/
 
-FP16& FP16::operator=(FP16& N) noexcept {
+FP16& FP16::operator=(const FP16& N) noexcept {
     if (this != &N) {
         sign = N.sign;
         exp = N.exp;
@@ -755,7 +755,7 @@ FP16& FP16::operator=(float N) noexcept {
 
     } else {
         float_exp -= 127;
-        float_man |= 0x800000; 
+        float_man |= 0x800000;
     }
 
     int32_t new_exp = float_exp + shiftExp;
