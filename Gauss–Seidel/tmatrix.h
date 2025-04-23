@@ -159,7 +159,7 @@ public:
         if (sz != v.sz) throw length_error("Incompatible sizes");
         TDynamicVector tmp(sz);
         for (size_t i = 0; i < sz; i++)
-            tmp.pMem[i] = pMem[i] - v.pMem[i];
+            tmp.pMem[i] = (pMem[i] - v.pMem[i]);
         return tmp;
     }
     T operator*(const TDynamicVector& v) const
@@ -212,7 +212,7 @@ public:
     operator TDynamicVector<type2>() {
         TDynamicVector<type2> V(size());
         for (size_t i = 0; i < size(); ++i) {
-            V[i] = type2((*this)[i]);
+            V[i] = type2(((*this)[i]));
         }
         return V;
     }

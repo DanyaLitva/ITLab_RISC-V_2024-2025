@@ -1,5 +1,5 @@
 #include <iostream>
-
+#include "FP16.h"
 #if !__GNUC__ && !__clang__
 int32_t __builtin_clz(uint32_t num) { \
 	if (num == 0) return 32; \
@@ -69,5 +69,13 @@ public:
 	bool operator > (const FP32& fp) const noexcept;
 	bool operator >= (const FP32& fp) const noexcept;
 	bool operator <= (const FP32& fp) const noexcept;
+    
 	bool operator != (const FP32& fp) const noexcept;
+    FP32& operator=(const FP16& num){
+        *this = float(num);
+        return *this;
+    }
+    FP32(FP16 f) noexcept{
+        *this = float(f);
+    }
 };
