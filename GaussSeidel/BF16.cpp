@@ -1,5 +1,5 @@
 #include "BF16.h"
-
+#include <cstdint>
 uint16_t BF16::add(uint16_t l, uint16_t r) const noexcept {
 	uint16_t res;
 	uint16_t el = (l & 0x7F80) >> 7;

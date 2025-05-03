@@ -397,6 +397,34 @@ public:
         }
     }
 
+    void generate2() {
+        for (size_t i = 0; i < sz; ++i) {
+            for (size_t j = 0; j < sz; ++j) {
+                (*this)[i][j] = 0.0;
+            }
+            (*this)[i][i] = 1.0;
+        }
+
+        std::random_device r;
+        std::default_random_engine e(r());
+        std::uniform_int_distribution<size_t> index_gen(0, sz - 1);
+        std::uniform_real_distribution<double> coef_gen(-10.0 / (sz * sz), 10.0 / (sz * sz));
+        size_t count = sz * sz;
+        size_t indexI, indexJ;
+        double coef;
+
+//#pragma omp parallel for
+        for (long long _ = 0; _ < count; ++_) {
+            indexI = index_gen(e);
+            indexJ = index_gen(e);
+            coef = coef_gen(e);
+
+            for (long long i = 0; i < sz; ++i) {
+                pMem[i][i] += pMem[i][i] * T(coef);
+            }
+        }
+    }
+    
     template <typename type2>
     operator TDynamicMatrix<type2>(){
         TDynamicMatrix<type2> M(size());
@@ -587,12 +615,10 @@ TDynamicVector<type> DiagMatrix(TDynamicMatrix<type> M) {
 
 template <typename type>
 bool CloseSol(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref) {
+    TDynamicVector<type> temp(x.size());
+    temp = (A*x - b);
     for (size_t i = 0; i < A.size(); ++i) {
-        if ((A * x - b)[i] >= ref){
-            double t = (A * x - b)[i];
-            t = t;
-            x[i]=x[i];
-            b[i] = b[i];
+        if (temp[i] >= ref){
             return false;
         }
     }
@@ -648,4 +674,21 @@ type MaxVal(TDynamicVector<type> M) {
     }
     return temp;
 }
+
+template <typename type>
+bool CloseSol2(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref) {
+    TDynamicVector<type> temp(x.size());
+    temp = (A*x - b);
+    double b_sum, axb_sum;
+    b_sum = axb_sum = 0;
+    for (size_t i = 0; i < A.size(); ++i) {
+        b_sum+=double(b[i]*b[i]);
+        axb_sum += double(temp[i]*temp[i]);
+    }
+    
+    if((axb_sum/b_sum)>double(ref)) return false;
+    else return true;
+}
+
+
 #endif
