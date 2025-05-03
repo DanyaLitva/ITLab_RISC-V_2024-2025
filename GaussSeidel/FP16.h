@@ -1,4 +1,7 @@
 #include <iostream>
+#include <cstdint>
+#include <cstring>
+#include <cmath>
 #pragma once
 const int manLength = 10;
 const int expLength = 5;
@@ -53,7 +56,10 @@ public:
     FP16(double num) noexcept{
         *this = num;
     }
-   
+    FP16& fma(const FP16& a, const FP16& b){
+        *this = fma4(*this,a,b);
+        return *this;
+    }
     operator double() const noexcept;
     operator float() const noexcept;
 };

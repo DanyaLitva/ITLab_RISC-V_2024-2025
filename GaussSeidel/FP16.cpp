@@ -175,7 +175,7 @@ FP16 FP16::operator+(FP16 right) const noexcept {
         //inf +- inf
         if (IsInf() && right.IsInf()) {
             if (sign != right.sign) {
-                Res.exp = (1 << expLength);
+                Res.exp = (1 << expLength) - 1;
                 Res.man = 1;
                 return Res;
             }
@@ -295,7 +295,7 @@ FP16 FP16::operator*(FP16 right) const noexcept {
         //inf +- inf
         if (IsInf() && right.IsInf()) {
             if (sign != right.sign) {
-                Res.exp = (1 << expLength);
+                Res.exp = (1 << expLength) - 1;
                 Res.man = 1;
                 return Res;
             }

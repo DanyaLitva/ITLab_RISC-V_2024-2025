@@ -30,20 +30,20 @@ public:
     TDynamicVector(size_t size = 1) : sz(size)
     {
         if (sz == 0)
-            throw out_of_range("Vector size should be greater than zero");
+            throw std::out_of_range("Vector size should be greater than zero");
         if (sz > MAX_VECTOR_SIZE)
-            throw out_of_range("Too large vector");
+            throw std::out_of_range("Too large vector");
         //        pMem = new T[sz]();// {}; // У типа T д.б. констуктор по умолчанию
         pMem.resize(sz);
     }
     TDynamicVector(T* arr, size_t s) : sz(s)
     {
         if (sz == 0)
-            throw out_of_range("Vector size should be greater than zero");
+            throw std::out_of_range("Vector size should be greater than zero");
         if (sz > MAX_VECTOR_SIZE)
-            throw out_of_range("Too large vector");
+            throw std::out_of_range("Too large vector");
         if (arr == nullptr)
-            throw invalid_argument("TDynamicVector ctor requires non-nullptr arg");
+            throw std::invalid_argument("TDynamicVector ctor requires non-nullptr arg");
         //        pMem = new T[sz];
         pMem.resize(sz);
         std::copy(arr, arr + sz, pMem);
@@ -98,12 +98,12 @@ public:
     // индексация с контролем
     T& at(size_t ind)
     {
-        if (ind >= sz) throw out_of_range("Out of range");
+        if (ind >= sz) throw std::out_of_range("Out of range");
         return pMem[ind];
     }
     const T& at(size_t ind) const
     {
-        if (ind >= sz) throw out_of_range("Out of range");
+        if (ind >= sz) throw std::out_of_range("Out of range");
         return pMem[ind];
     }
 
@@ -148,7 +148,7 @@ public:
     // векторные операции
     TDynamicVector operator+(const TDynamicVector& v) const
     {
-        if (sz != v.sz) throw length_error("Incompatible sizes");
+        if (sz != v.sz) throw std::length_error("Incompatible sizes");
         TDynamicVector tmp(sz);
         for (size_t i = 0; i < sz; i++)
             tmp.pMem[i] = pMem[i] + v.pMem[i];
@@ -156,7 +156,7 @@ public:
     }
     TDynamicVector operator-(const TDynamicVector& v) const
     {
-        if (sz != v.sz) throw length_error("Incompatible sizes");
+        if (sz != v.sz) throw std::length_error("Incompatible sizes");
         TDynamicVector tmp(sz);
         for (size_t i = 0; i < sz; i++)
             tmp.pMem[i] = (pMem[i] - v.pMem[i]);
@@ -164,7 +164,7 @@ public:
     }
     T operator*(const TDynamicVector& v) const
     {
-        if (sz != v.sz) throw length_error("Incompatible sizes");
+        if (sz != v.sz) throw std::length_error("Incompatible sizes");
         T tmp = T();
         for (size_t i = 0; i < sz; i++)
             tmp += pMem[i] * v.pMem[i];
@@ -201,10 +201,10 @@ public:
     void generate() {
         std::random_device r;
         std::default_random_engine e(r());
-        std::uniform_real_distribution<double> coef_gen(-1.0, 1.0);
+        std::uniform_real_distribution<double> coef_gen(0.,1.);
 
         for (size_t i = 0; i < sz; ++i) {
-            pMem[i] = coef_gen(e);
+            pMem[i] = coef_gen(e) * (1 - (2* (rand()%2)));
         }
     }
 
@@ -230,7 +230,7 @@ public:
     TDynamicMatrix(size_t s = 1) : TDynamicVector<TDynamicVector<T>>(s)
     {
         if (sz > MAX_MATRIX_SIZE)
-            throw out_of_range("Too large matrix");
+            throw std::out_of_range("Too large matrix");
         for (size_t i = 0; i < sz; i++)
             pMem[i] = TDynamicVector<T>(sz);
     }
@@ -286,7 +286,7 @@ public:
     }
     TDynamicMatrix operator*(const TDynamicMatrix& m) //square matrixes
     {
-        if (sz != m.sz) throw length_error("incompatible sizes");
+        if (sz != m.sz) throw std::length_error("incompatible sizes");
         TDynamicMatrix res(sz);
 
         for (size_t i = 0; i < sz; ++i) {
@@ -386,41 +386,15 @@ public:
     //}
 
     void generate() {
-        for (size_t i = 0; i < sz; ++i) {
-            for (size_t j = 0; j < sz; ++j) {
-                pMem[i][j] = 0;
-            }
-            pMem[i][i] = 1;
-        }
-        //        vector<size_t> vI;
-        //        vector<size_t> vJ;
-        //        vector<double> vC;
-
         std::random_device r;
         std::default_random_engine e(r());
-        std::uniform_int_distribution<size_t> count_gen(sz, sz * sz);
-        std::uniform_int_distribution<size_t> index_gen(0, sz - 1);
-        std::uniform_real_distribution<double> coef_gen(-1.0, 1.0);
-        size_t count = count_gen(e);
-        size_t indexI, indexJ;
-        double coef;
-
-        for (size_t i = 0; i < count; ++i) {
-            indexI = index_gen(e);
-            indexJ = index_gen(e);
-            coef = coef_gen(e);
-            //            vI.push_back(indexI);
-            //            vJ.push_back(indexJ);
-            //            vC.push_back(coef);
-            //            cout << indexI << " " << indexJ << " " << coef << endl;
-            pMem[indexI] = pMem[indexI] + pMem[indexJ] * T(coef);
-            //            cout << *this << endl;
+        std::uniform_real_distribution<double> coef_gen(1.,2.);
+        for (size_t i = 0; i < sz; ++i) {
+            for (size_t j = 0; j < sz; ++j) {
+                pMem[i][j] = T(coef_gen(e) * (1 - (2*(rand()%2))));
+            }
+//            pMem[i][i]*=2.;
         }
-        //        if (norm1() >= 1'000'000.0) {
-        //            for (size_t i = 0; i < vI.size(); ++i)
-        //                cout << vI[i] << " " << vJ[i] << " " << vC[i] << endl;
-        //            throw runtime_error("ERROR");
-        //        }
     }
 
     template <typename type2>
@@ -456,6 +430,31 @@ public:
             }
         }
         
+    }
+
+    
+    void generateGoodMatrix2() {
+        std::random_device r;
+        std::default_random_engine e(r());
+        std::uniform_real_distribution<double> coef_gen(0.1,10.);
+        std::uniform_real_distribution<double> small_gen(1.001,1.1);
+        double sum = 0;
+        for (size_t i = 0; i < sz; ++i) {
+            sum = 0;
+                for (size_t j = 0; j < sz; ++j) {
+                    if (i != j) {
+                        sum+= abs(pMem[i][j] = T(coef_gen(e) * (1 - (2 * (rand()%2)))));
+                    }
+                }
+                pMem[i][i]=T(small_gen(e) * sum * (1 - (2 * (rand()%2))));
+            
+            while(pMem[i][i] >10000.){
+                for (size_t j = 0; j < sz; ++j) {
+                    pMem[i][j]/=2.;
+                }
+            }
+            
+        }
     }
 
 };
@@ -589,7 +588,13 @@ TDynamicVector<type> DiagMatrix(TDynamicMatrix<type> M) {
 template <typename type>
 bool CloseSol(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref) {
     for (size_t i = 0; i < A.size(); ++i) {
-        if ((A * x - b)[i] >= ref) return false;
+        if ((A * x - b)[i] >= ref){
+            double t = (A * x - b)[i];
+            t = t;
+            x[i]=x[i];
+            b[i] = b[i];
+            return false;
+        }
     }
     return true;
 }
@@ -604,7 +609,43 @@ bool IsMatrixDiffFromInf(TDynamicMatrix<type> M, type ref) {
     return true;
 }
 
+template <typename type>
+type MinVal(TDynamicMatrix<type> M) {
+    type temp = M[0][0];
+    for (size_t i = 0; i < M.size(); ++i) {
+        for (size_t j = 0; j < M.size(); ++j) {
+            if (M[i][j] < temp) temp = M[i][j];
+        }
+    }
+    return temp;
+}
 
+template <typename type>
+type MaxVal(TDynamicMatrix<type> M) {
+    type temp = M[0][0];
+    for (size_t i = 0; i < M.size(); ++i) {
+        for (size_t j = 0; j < M.size(); ++j) {
+            if (M[i][j] > temp) temp = M[i][j];
+        }
+    }
+    return temp;
+}
 
+template <typename type>
+type MinVal(TDynamicVector<type> M) {
+    type temp = M[0];
+    for (size_t i = 0; i < M.size(); ++i) {
+            if (M[i] < temp) temp = M[i];
+    }
+    return temp;
+}
 
+template <typename type>
+type MaxVal(TDynamicVector<type> M) {
+    type temp = M[0];
+    for (size_t i = 0; i < M.size(); ++i) {
+            if (M[i] > temp) temp = M[i];
+    }
+    return temp;
+}
 #endif
