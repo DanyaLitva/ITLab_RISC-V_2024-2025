@@ -209,7 +209,7 @@ int main() {
     TDynamicMatrix<double> maxA(MSize);
     TDynamicVector<double> minb(A.size());
     TDynamicVector<double> maxb(A.size());
-    double minT = MAXFLOAT;
+    double minT = 10000000.;
     double maxT = 0;
     
     for(size_t temp_it = 0; temp_it < count_it;temp_it++){
