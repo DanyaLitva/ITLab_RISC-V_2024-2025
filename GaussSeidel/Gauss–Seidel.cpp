@@ -15,6 +15,7 @@ float fp32perc =0.00048828125;
 size_t count4pre = 4;
 size_t count_repeat = 2;
 size_t MSize = 1024;
+size_t count_it = 10;
 
 template<typename type>
 TDynamicVector<type> Gauss_Seidel_accurate(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref = fp64perc) {
@@ -199,57 +200,59 @@ int main() {
     TDynamicVector<double> x(A.size());
     vector<double> VectorTime = { 0,0,0,0,0 };
     vector<int> VectorTimeCount = { 0,0,0,0,0 };
-    A.generateGoodMatrix2();
-    b.generate();
-
-    cout<<"About Matrix:"<<endl;
-    cout<<"A min: "<<MinVal(A)<<endl;
-    cout<<"A max: "<<MaxVal(A)<<endl;
-    cout<<"b min: "<<MinVal(b)<<endl;
-    cout<<"b max: "<<MaxVal(b)<<endl<<endl;
-    
-    auto start = std::chrono::steady_clock::now();
-    x = Gauss_Seidel_double(A, b, fp64perc);
-    auto end = std::chrono::steady_clock::now();
-    double elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
-    cout << "general double time: "<<elapsed/1000. <<" seconds"<< endl;
-//    cout<<endl<<"x min: "<<MinVal(x)<<endl;
-//    cout<<"x max: "<<MaxVal(x)<<endl;
-    cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
-    cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
-    
-    
-    start = std::chrono::steady_clock::now();
-    x = Gauss_Seidel_float_double(A, b, fp64perc);
-    end = std::chrono::steady_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
-    cout << "general float+double time: "<<elapsed/1000. <<" seconds"<< endl;
-//    cout<<endl<<"x min: "<<MinVal(x)<<endl;
-//    cout<<"x max: "<<MaxVal(x)<<endl;
-    cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
-    cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
-    
-    start = std::chrono::steady_clock::now();
-    x = Gauss_Seidel_fp32(A, b, fp32perc);
-    end = std::chrono::steady_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
-    cout << "general FP32 time: "<<elapsed/1000. <<" seconds"<< endl;
-//    cout<<endl<<"x min: "<<MinVal(x)<<endl;
-//    cout<<"x max: "<<MaxVal(x)<<endl;
-    cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
-    cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
-    
-    
-    start = std::chrono::steady_clock::now();
-    x = Gauss_Seidel_fp16_fp32(A, b, fp32perc);
-    end = std::chrono::steady_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
-    cout << "general FP16+FP32 time: "<<elapsed/1000. <<" seconds"<< endl;
-//    cout<<endl<<"x min: "<<MinVal(x)<<endl;
-//    cout<<"x max: "<<MaxVal(x)<<endl;
-    cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
-    cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
-    
+    for(size_t temp_it = 0; temp_it < count_it;temp_it++){
+        A.generateGoodMatrix2();
+        b.generate();
+        cout<<endl<<"Iteration №"<<temp_it+1<<endl;
+        cout<<"About Matrix:"<<endl;
+        cout<<"A min: "<<MinVal(A)<<endl;
+        cout<<"A max: "<<MaxVal(A)<<endl;
+        cout<<"b min: "<<MinVal(b)<<endl;
+        cout<<"b max: "<<MaxVal(b)<<endl<<endl;
+        
+        auto start = std::chrono::steady_clock::now();
+        x = Gauss_Seidel_double(A, b, fp64perc);
+        auto end = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
+        cout << "general double time: "<<elapsed/1000. <<" seconds"<< endl;
+        //    cout<<endl<<"x min: "<<MinVal(x)<<endl;
+        //    cout<<"x max: "<<MaxVal(x)<<endl;
+        cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
+        cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
+        
+        
+        start = std::chrono::steady_clock::now();
+        x = Gauss_Seidel_float_double(A, b, fp64perc);
+        end = std::chrono::steady_clock::now();
+        elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
+        cout << "general float+double time: "<<elapsed/1000. <<" seconds"<< endl;
+        //    cout<<endl<<"x min: "<<MinVal(x)<<endl;
+        //    cout<<"x max: "<<MaxVal(x)<<endl;
+        cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
+        cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
+        
+        start = std::chrono::steady_clock::now();
+        x = Gauss_Seidel_fp32(A, b, fp32perc);
+        end = std::chrono::steady_clock::now();
+        elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
+        cout << "general FP32 time: "<<elapsed/1000. <<" seconds"<< endl;
+        //    cout<<endl<<"x min: "<<MinVal(x)<<endl;
+        //    cout<<"x max: "<<MaxVal(x)<<endl;
+        cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
+        cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
+        
+        
+        start = std::chrono::steady_clock::now();
+        x = Gauss_Seidel_fp16_fp32(A, b, fp32perc);
+        end = std::chrono::steady_clock::now();
+        elapsed = std::chrono::duration_cast<std::chrono::milliseconds > (end - start).count();
+        cout << "general FP16+FP32 time: "<<elapsed/1000. <<" seconds"<< endl;
+        //    cout<<endl<<"x min: "<<MinVal(x)<<endl;
+        //    cout<<"x max: "<<MaxVal(x)<<endl;
+        cout<<"(Ax-b) min: "<<MinVal((A*x-b))<<endl;
+        cout<<"(Ax-b) max: "<<MaxVal((A*x-b))<<endl<<endl;
+    }
+        
     return 0;
 }
 
