@@ -614,13 +614,27 @@ TDynamicVector<type> DiagMatrix(TDynamicMatrix<type> M) {
 }
 
 template <typename type>
-bool CloseSol(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref) {
+bool CloseSol_old(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref) {
     TDynamicVector<type> temp(x.size());
     temp = (A*x - b);
     for (size_t i = 0; i < A.size(); ++i) {
         if (temp[i] >= ref){
             return false;
         }
+    }
+    return true;
+}
+
+template <typename type>
+bool CloseSol(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref) {
+    type temp;
+    for (size_t i = 0; i < x.size(); ++i) {
+        temp=type(0.);
+        for (size_t k = 0; k < x.size(); ++k) {
+            temp = temp + A[i][k] * x[k];
+        }
+        temp = temp - b[i];
+        if(temp>=ref) return false;
     }
     return true;
 }
