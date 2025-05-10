@@ -1,18 +1,18 @@
 #include "FP16.h"
 
 bool FP16::IsSubnormal() const noexcept { return (exp == 0) && (man != 0); }
-bool FP16::IsInf() const noexcept { return exp == ((1 << 5) - 1) && (man == 0); }
+bool FP16::IsInf() const noexcept { return exp == ((1 << expLength) - 1) && (man == 0); }
 bool FP16::IsNull() const noexcept { return (exp == 0) && (man == 0); }
-bool FP16::IsNan() const noexcept { return ((exp == ((1 << 5) - 1)) && (man != 0)); }
+bool FP16::IsNan() const noexcept { return ((exp == ((1 << expLength) - 1)) && (man != 0)); }
 void FP16::printFP16_bites() const noexcept{
     std::cout << sign << "_";
-    for (char i = 0; i < 5; ++i) std::cout << ((exp >> (5 - i - 1)) & 1);
+    for (char i = 0; i < expLength; ++i) std::cout << ((exp >> (expLength - i - 1)) & 1);
     std::cout << "_";
-    for (char i = 0; i < 10; ++i) std::cout << ((man >> (10 - i - 1)) & 1);
+    for (char i = 0; i < manLength; ++i) std::cout << ((man >> (manLength - i - 1)) & 1);
 }
 
 /*FP16::operator float16_t() const noexcept {
-    unsigned short bits = (sign << (10 + 5)) | (exp << 10) | man;
+    unsigned short bits = (sign << (manLength + expLength)) | (exp << manLength) | man;
     return *reinterpret_cast<float16_t*>(&bits);
 }*/
 
@@ -25,115 +25,157 @@ FP16& FP16::operator=(const FP16& N) noexcept {
     return *this;
 }
 
-void FP16::set_from_uint(const uint16_t& temp) noexcept{
+void FP16::set_from_uint(uint16_t temp) noexcept{
     sign = (temp >> 15) & 0x1;
     exp = (temp >> 10) & 0x1F;
     man = temp & 0x3FF;
 }
 
 uint16_t FP16::get_int() const noexcept {
-    uint16_t temp = (sign << (10 + 5)) | (exp << 10) | man;
+    uint16_t temp = (sign << (manLength + expLength)) | (exp << manLength) | man;
     return temp;
 }
 
 //FP16::FP16(uint16_t temp) noexcept {
-//    sign = temp >> (10 + 5);
-//    exp = (temp >> 10) & ((1 << 5) - 1);
-//    man = temp & ((1 << 10) - 1);
+//    sign = temp >> (manLength + expLength);
+//    exp = (temp >> manLength) & ((1 << expLength) - 1);
+//    man = temp & ((1 << manLength) - 1);
 //}
 
+FP16 FP16::operator+(FP16 right) const noexcept {
+    if (IsNull()) return right;
+    if (right.IsNull()) return *this;
 
-FP16 FP16::operator-(FP16 right) const noexcept {
-    right.sign += 1;
-    return *this + right;
-}
-
-FP16 FP16::operator*(const FP16& right) const noexcept {
     FP16 Res;
-    Res.sign = sign ^ right.sign;
-    uint16_t temp_man;
-    int16_t temp_exp;
-    uint32_t lost_bit;
-    uint8_t diff = 10;
-    if (IsNull() || right.IsNull()) {
+    uint16_t temp = 0;
+    int8_t diff = exp - right.exp;
+    int16_t shift;
+    uint8_t max_exp;
+    uint32_t lost_bit = 0;
+
+    if (diff < 0) max_exp = right.exp;
+    else max_exp = exp;
+
+    if ((exp == right.exp)) {
+        shift = 1 << (manLength);
+        if (man >= right.man) {
+            temp = (1 << manLength) + man + (1 - int(2 * ((this->sign + right.sign) % 2))) * (shift + right.man);
+            Res.sign = sign;
+        }
+        else {
+            temp = (1 << manLength) + right.man + (1 - int(2 * ((this->sign + right.sign) % 2))) * (man + shift);
+            Res.sign = right.sign;
+        }
+    }
+
+    if (this->exp > right.exp) {
+        shift = 1 << (manLength - diff);
+        if ((manLength - diff) < 0) shift = 0;
+        temp = (1 << manLength) + this->man + (1 - int(2 * ((this->sign + right.sign) % 2))) * (shift + (right.man >> diff));
+        lost_bit = right.man & (((1 << (diff)) - 1));
+        lost_bit += (1 << manLength) & (((1 << (diff)) - 1));
+        Res.sign = sign;
+    }
+
+    if (this->exp < right.exp) {
+        diff *= -1;
+        shift = 1 << (manLength - diff);
+        if (manLength - diff < 0) shift = 0;
+        temp = (1 << manLength) + right.man + (1 - int(2 * ((this->sign + right.sign) % 2))) * (shift + (this->man >> diff));
+        lost_bit = man & (((1 << (diff)) - 1));
+        lost_bit += (1 << manLength) & (((1 << (diff)) - 1));
+        Res.sign = right.sign;
+    }
+
+    if (IsSubnormal() || right.IsSubnormal()) {
+        if (IsSubnormal() && right.IsSubnormal()) {
+            if (man >= right.man) {
+                temp = man + (1 - (2 * ((this->sign + right.sign) % 2))) * right.man;
+                Res.sign = sign;
+            }
+            else {
+                temp = right.man + (1 - (2 * ((this->sign + right.sign) % 2))) * man;
+                Res.sign = right.sign;
+            }
+        }
+        else {
+            //left subnormal
+            if (IsSubnormal()) {
+                diff = right.exp - 1;
+                temp = (1 << manLength) + right.man + (1 - (2 * ((this->sign + right.sign) % 2))) * (this->man >> diff);
+                lost_bit = man & (((1 << (diff)) - 1));
+                Res.sign = right.sign;
+                max_exp = right.exp;
+            }
+            //right subnormal
+            else {
+                diff = exp - 1;
+                temp = (1 << manLength) + this->man + (1 - (2 * ((this->sign + right.sign) % 2))) * (right.man >> diff);
+                lost_bit = right.man & (((1 << (diff)) - 1));
+                Res.sign = sign;
+                max_exp = exp;
+            }
+        }
+    }
+
+    if (sign != right.sign && lost_bit != 0) {
+        temp--;
+        lost_bit = (1 << (diff)) - lost_bit;
+    }
+
+
+    while (temp < (1 << manLength) && max_exp>1) {
+        temp <<= 1;
+        max_exp--;
+        temp += (lost_bit >> (diff - 1)) & 1;
+        lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+        diff--;
+    }
+
+    if (temp == 0) {
+        Res.sign = 0;
         Res.exp = 0;
         Res.man = 0;
         return Res;
     }
-    if (!IsSubnormal() && !right.IsSubnormal()) {
-        temp_exp = exp + right.exp - 15 - 15;
-        temp_man = (1 << 10) + man + right.man + uint16_t((uint32_t(man) * right.man) >> 10);
-    }
-    else {
-        if (IsSubnormal() && right.IsSubnormal()) {
-            Res.exp = 0;
-            Res.man = 0;
-            return Res;
-        }
-        else {
-            temp_exp = exp - 15 + right.exp - 15 + 1;
-            if (IsSubnormal()) {
-                temp_man = man + uint16_t((uint32_t(man) * right.man) >> 10);
-            }
-            else {
-                temp_man = right.man + uint16_t((uint32_t(man) * right.man) >> 10);
-            }
-        }
-    }
 
-    lost_bit = (uint32_t(man) * right.man) & ((1 << 10) - 1);
-
-    if (temp_exp < -(15 - 1)) {
-        while (temp_exp < -(15 - 1)) {
-            lost_bit += (temp_man & 1) << diff;
-            diff++;
-            temp_man = temp_man >> 1;
-            temp_exp++;
-        }
-        if (temp_man < (1 << 10)) temp_exp = -15;
-    }
-
-    if ((temp_man >= (1 << (10 + 1))) && (temp_exp >= -(15 - 1))) {
-        lost_bit += ((temp_man & 1) << (diff));
+    if (temp >= (1 << (manLength + 1)) && (max_exp > 0)) {
+        lost_bit += ((temp & 1) << (diff));
         diff++;
-        temp_man = temp_man >> 1;
-        temp_exp++;
-    }
-    else {
-        while (temp_man < (1 << 10) && temp_exp>-(15 - 1)) {
-            temp_man <<= 1;
-            temp_exp--;
-
-            temp_man += (lost_bit >> (diff - 1)) & 1;
-            lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
-            diff--;
-        }
+        temp = temp >> 1;
+        max_exp++;
     }
 
 
     if ((lost_bit >> (diff - 1)) & 1) {
         lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
         if (lost_bit > 0) {
-            temp_man++;
+            temp++;
         }
         else {
-            temp_man += (temp_man & 1);
+            temp += (temp & 1);
         }
-        if ((temp_man >= (1 << (10 + 1))) && (temp_exp >= -(15 - 1))) {
-            temp_man = temp_man >> 1;
-            temp_exp++;
+        if ((temp >= (1 << (manLength + 1))) && (max_exp >= 1)) {
+            temp = temp >> 1;
+            max_exp++;
         }
     }
 
-    if (temp_exp == -15 && temp_man >= (1 << 10)) {
-        temp_exp++;
+
+    if (temp < (1 << manLength) && max_exp == 1) {
+        max_exp = 0;
     }
 
-    if ((temp_exp >= ((1 << 5) - 1 - 15)) || IsInf() || right.IsInf() || IsNan() || right.IsNan()) {
+    if (temp >= (1 << manLength) && (max_exp == 0)) {
+        max_exp = 1;
+        temp -= (1 << manLength);
+    }
+
+    if ((max_exp >= ((1 << expLength) - 1)) || IsInf() || right.IsInf() || IsNan() || right.IsNan()) {
         //inf +- inf
         if (IsInf() && right.IsInf()) {
             if (sign != right.sign) {
-                Res.exp = (1 << 5) - 1;
+                Res.exp = (1 << expLength);
                 Res.man = 1;
                 return Res;
             }
@@ -151,26 +193,146 @@ FP16 FP16::operator*(const FP16& right) const noexcept {
         if (right.IsNan()) return right;
 
         //if result is inf
-        if (temp_exp >= (((1 << 5) - 1 - 15))) {
-            Res.exp = (1 << 5) - 1;
+        if (max_exp >= ((1 << expLength) - 1)) {
+            Res.exp = ((1 << expLength) - 1);
             Res.man = 0;
             return Res;
         }
     }
 
-    if ((temp_man < (1 << 10)) && (temp_exp == -(15 - 1))) {
+
+    Res.exp = max_exp;
+    Res.man = (temp - (1 << manLength));
+    if (max_exp == 0) Res.man = temp;
+    return Res;
+}
+
+FP16 FP16::operator-(FP16 right) const noexcept {
+    right.sign += 1;
+    return *this + right;
+}
+
+FP16 FP16::operator*(FP16 right) const noexcept {
+    FP16 Res;
+    Res.sign = sign ^ right.sign;
+    uint16_t temp_man;
+    int16_t temp_exp;
+    uint32_t lost_bit;
+    uint8_t diff = manLength;
+    if (IsNull() || right.IsNull()) {
+        Res.exp = 0;
+        Res.man = 0;
+        return Res;
+    }
+    if (!IsSubnormal() && !right.IsSubnormal()) {
+        temp_exp = exp + right.exp - shiftExp - shiftExp;
+        temp_man = (1 << manLength) + man + right.man + uint16_t((uint32_t(man) * right.man) >> manLength);
+    }
+    else {
+        if (IsSubnormal() && right.IsSubnormal()) {
+            Res.exp = 0;
+            Res.man = 0;
+            return Res;
+        }
+        else {
+            temp_exp = exp - shiftExp + right.exp - shiftExp + 1;
+            if (IsSubnormal()) {
+                temp_man = man + uint16_t((uint32_t(man) * right.man) >> manLength);
+            }
+            else {
+                temp_man = right.man + uint16_t((uint32_t(man) * right.man) >> manLength);
+            }
+        }
+    }
+
+    lost_bit = (uint32_t(man) * right.man) & ((1 << manLength) - 1);
+
+    if (temp_exp < -(shiftExp - 1)) {
+        while (temp_exp < -(shiftExp - 1)) {
+            lost_bit += (temp_man & 1) << diff;
+            diff++;
+            temp_man = temp_man >> 1;
+            temp_exp++;
+        }
+        if (temp_man < (1 << manLength)) temp_exp = -shiftExp;
+    }
+
+    while (temp_man < (1 << manLength) && temp_exp>-(shiftExp - 1)) {
+        temp_man <<= 1;
+        temp_exp--;
+
+        temp_man += (lost_bit >> (diff - 1)) & 1;
+        lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+        diff--;
+    }
+
+    if ((temp_man >= (1 << (manLength + 1))) && (temp_exp >= -(shiftExp - 1))) {
+        lost_bit += ((temp_man & 1) << (diff));
+        diff++;
+        temp_man = temp_man >> 1;
+        temp_exp++;
+    }
+
+    if ((lost_bit >> (diff - 1)) & 1) {
+        lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
+        if (lost_bit > 0) {
+            temp_man++;
+        }
+        else {
+            temp_man += (temp_man & 1);
+        }
+        if ((temp_man >= (1 << (manLength + 1))) && (temp_exp >= -(shiftExp - 1))) {
+            temp_man = temp_man >> 1;
+            temp_exp++;
+        }
+    }
+
+    if (temp_exp == -shiftExp && temp_man >= (1 << manLength)) {
+        temp_exp++;
+    }
+
+    if ((temp_exp >= ((1 << expLength) - 1 - shiftExp)) || IsInf() || right.IsInf() || IsNan() || right.IsNan()) {
+        //inf +- inf
+        if (IsInf() && right.IsInf()) {
+            if (sign != right.sign) {
+                Res.exp = (1 << expLength);
+                Res.man = 1;
+                return Res;
+            }
+            else {
+                return *this;
+            }
+        }
+
+        if (IsInf()) return *this;
+
+        if (right.IsInf()) return right;
+
+        if (IsNan()) return *this;
+
+        if (right.IsNan()) return right;
+
+        //if result is inf
+        if (temp_exp >= (((1 << expLength) - 1 - shiftExp))) {
+            Res.exp = (1 << expLength) - 1;
+            Res.man = 0;
+            return Res;
+        }
+    }
+
+    if ((temp_man < (1 << manLength)) && (temp_exp == -(shiftExp - 1))) {
         Res.exp = 0;
         Res.man = temp_man;
         return Res;
     }
 
-    Res.exp = temp_exp + 15;
-    Res.man = temp_man - (1 << 10);
+    Res.exp = temp_exp + shiftExp;
+    Res.man = temp_man - (1 << manLength);
 
     return Res;
 }
 
-uint16_t fma_half(const uint16_t& a, const uint16_t& b, const uint16_t& c) noexcept {
+uint16_t fma_half(uint16_t a, uint16_t b, uint16_t c) noexcept {
     FP16 A, B, C;
     A.set_from_uint(a);
     B.set_from_uint(b);
@@ -178,7 +340,7 @@ uint16_t fma_half(const uint16_t& a, const uint16_t& b, const uint16_t& c) noexc
     return (fma4(A, B, C).get_int());
 }
 
-uint16_t mul_half(const uint16_t& a, const uint16_t& b) noexcept {
+uint16_t mul_half(uint16_t a, uint16_t b) noexcept {
     FP16 A, B;
     A.set_from_uint(a);
     B.set_from_uint(b);
@@ -192,7 +354,7 @@ uint16_t usub_half(uint16_t temp) noexcept {
 }
 
 
-FP16 FP16::operator/(const FP16& right) const noexcept {
+FP16 FP16::operator/(FP16 right) const noexcept {
     FP16 Res;
     uint16_t l = get_int();
     uint16_t r = right.get_int();
@@ -379,17 +541,17 @@ FP16 FP16::operator-() noexcept {
     return temp;
 }
 
-FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
+FP16 fma4(FP16 a, FP16 b, FP16 c) noexcept {
     FP16 Res;
     uint32_t mul_man;
     int16_t mul_exp;
-    int64_t shift = 10;
+    int64_t shift = manLength;
     uint64_t lostbit;
     Res.sign = a.sign ^ b.sign;
 
-    mul_exp = a.exp + b.exp - 15;
+    mul_exp = a.exp + b.exp - shiftExp;
     if (a.exp != 0 && b.exp != 0) {
-        mul_man = ((1024 + (uint64_t(a.man) + uint64_t(b.man))) << 10) + (uint64_t(a.man) * b.man);
+        mul_man = (((1 << (manLength)) + (a.man + b.man)) << manLength) + (uint64_t(a.man) * b.man);
     }
     else {
         if (a.exp == 0 && b.exp == 0) {
@@ -398,12 +560,12 @@ FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
             return c;
         }
         else {
-            mul_exp = a.exp - 15 + b.exp + 1;
+            mul_exp = a.exp - shiftExp + b.exp + 1;
             if (a.exp == 0) {
-                mul_man = (uint64_t(a.man) << 10) + (uint64_t(a.man) * b.man);
+                mul_man = (a.man << manLength) + (uint64_t(a.man) * b.man);
             }
             else {
-                mul_man = (uint64_t(b.man) << 10) + (uint64_t(a.man) * b.man);
+                mul_man = (b.man << manLength) + (uint64_t(a.man) * b.man);
             }
         }
     }
@@ -415,26 +577,25 @@ FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
             shift++;
             mul_exp++;
         }
-        if ((mul_man << shift) < (1 << 10)) mul_exp = 0;
+        if ((mul_man << shift) < (1 << manLength)) mul_exp = 0;
     }
 
-    if ((mul_man >> shift) >= (1 << (1 + 10))) {
+    if ((mul_man >> shift) >= (1 << (1 + manLength))) {
         shift++;
         mul_exp++;
     }
-    else {
-        while ((mul_man >> shift) < (1 << (10)) && (mul_exp > 1)) {
-            shift--;
-            mul_exp--;
-        }
+
+    while ((mul_man >> shift) < (1 << (manLength)) && (mul_exp > 1)) {
+        shift--;
+        mul_exp--;
     }
 
-    if (mul_exp == 1 && ((mul_man >> shift) < (1 << (10)))) {
+    if (mul_exp == 1 && ((mul_man >> shift) < (1 << (manLength)))) {
         mul_exp = 0;
     }
 
-    if (mul_exp >= ((1 << 5) - 1)) {
-        Res.exp = ((1 << 5) - 1);
+    if (mul_exp >= ((1 << expLength) - 1)) {
+        Res.exp = ((1 << expLength) - 1);
         Res.man = 0;
         return Res;
     }
@@ -449,7 +610,7 @@ FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
         g_exp = mul_exp;
         g_man = mul_man;
         l_man = c.man;
-        if (c.exp != 0) l_man += (1 << 10);
+        if (c.exp != 0) l_man += (1 << manLength);
         l_man = l_man << shift;
         l_exp = c.exp;
     }
@@ -458,14 +619,14 @@ FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
             l_exp = mul_exp;
             l_man = mul_man;
             g_man = c.man;
-            if (c.exp != 0) g_man += (1 << 10);
+            if (c.exp != 0) g_man += (1 << manLength);
             g_man = g_man << shift;
             g_exp = c.exp;
             Res.sign = c.sign;
         }
         else {
             temp = c.man;
-            if (c.exp > 0) temp += (1 << 10);
+            if (c.exp > 0) temp += (1 << manLength);
             temp = temp << shift;
             if (temp > mul_man) {
                 l_exp = mul_exp;
@@ -486,14 +647,14 @@ FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
     if (l_exp == 0) l_exp = 1;
     if (g_exp == 0) g_exp = 1;
     temp_exp = g_exp;
-    if (g_exp != l_exp)   temp_man = (int64_t(g_man) << (1 << 5)) + ((int(1) - int(2 * ((mul_sign + c.sign) % 2))) * (int64_t(l_man) << ((1 << 5) - (g_exp - l_exp))));
-    else temp_man = (int64_t(g_man) << (1 << 5)) + ((int(1) - int(2 * ((mul_sign + c.sign) % 2))) * (int64_t(l_man) << (1 << 5)));
-    shift += (1 << 5);
-    while (((temp_man >> shift) < (1 << 10)) && temp_exp > 1) {
+    if (g_exp != l_exp)   temp_man = (int64_t(g_man) << (1 << expLength)) + ((int(1) - int(2 * ((mul_sign + c.sign) % 2))) * (int64_t(l_man) << ((1 << expLength) - (g_exp - l_exp))));
+    else temp_man = (int64_t(g_man) << (1 << expLength)) + ((int(1) - int(2 * ((mul_sign + c.sign) % 2))) * (int64_t(l_man) << (1 << expLength)));
+    shift += (1 << expLength);
+    while (((temp_man >> shift) < (1 << manLength)) && temp_exp > 1) {
         temp_exp--;
         shift--;
     }
-    if (((temp_man >> shift) >= (1 << (10 + 1)) && (temp_exp > 0))) {
+    if (((temp_man >> shift) >= (1 << (manLength + 1)) && (temp_exp > 0))) {
         shift++;
         temp_exp++;
     }
@@ -505,20 +666,20 @@ FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
         else {
             temp_man += (temp_man & 1);
         }
-        if (temp_man == (1 << (10 + 1))) {
+        if (temp_man == (1 << (manLength + 1))) {
             temp_man >>= 1;
             temp_exp++;
         }
     }
 
-    if ((temp_exp == 1) && (temp_man < (1 << 10))) temp_exp = 0;
+    if ((temp_exp == 1) && (temp_man < (1 << manLength))) temp_exp = 0;
 
     Res.man = temp_man;
     Res.exp = temp_exp;
 
-    if (temp_exp >= ((1 << 5) - 1)) {
+    if (temp_exp >= ((1 << expLength) - 1)) {
         Res.man = 0;
-        Res.exp = ((1 << 5) - 1);
+        Res.exp = ((1 << expLength) - 1);
     }
 
     if (temp_man == 0) {
@@ -530,7 +691,7 @@ FP16 fma4(const FP16& a, const FP16& b, const FP16& c) noexcept {
     return Res;
 }
 
-float fp16_to_float(const uint16_t& h) noexcept {
+float fp16_to_float(uint16_t h) noexcept {
     uint32_t sign = (h >> 15) & 0x1;
     uint32_t exponent = (h >> 10) & 0x1F;
     uint32_t mantissa = h & 0x3FF;
@@ -566,7 +727,7 @@ std::ostream& operator<<(std::ostream& os, FP16 num) noexcept {
 }
 
 
-FP16& FP16::operator=(const float& N) noexcept {
+FP16& FP16::operator=(float N) noexcept {
     if (N == 0.0f) {
         sign = std::signbit(N) ? 1 : 0;
         exp = 0;
@@ -583,7 +744,7 @@ FP16& FP16::operator=(const float& N) noexcept {
 
 
     if (float_exp == 0xFF) {
-        exp = (1 << 5) - 1;
+        exp = (1 << expLength) - 1;
         man = float_man ? 1 : 0;
         return *this;
     }
@@ -597,7 +758,7 @@ FP16& FP16::operator=(const float& N) noexcept {
         float_man |= 0x800000;
     }
 
-    int32_t new_exp = float_exp + 15;
+    int32_t new_exp = float_exp + shiftExp;
     uint32_t new_man = float_man >> 13;
 
 
@@ -618,7 +779,7 @@ FP16& FP16::operator=(const float& N) noexcept {
         uint32_t sticky = (float_man << (32 - (shift + 12))) != 0;
         new_man += (round_bit & (new_man | sticky));
 
-        if (new_man >= (1 << 10)) {
+        if (new_man >= (1 << manLength)) {
             new_man = 0;
             exp = 1;
         }
@@ -637,11 +798,11 @@ FP16& FP16::operator=(const float& N) noexcept {
     man += (round_bit & (man | sticky));
 
 
-    if (man >= (1 << 10)) {
+    if (man >= (1 << manLength)) {
         man >>= 1;
         exp++;
-        if (exp >= ((1 << 5) - 1)) {
-            exp = (1 << 5) - 1;
+        if (exp >= ((1 << expLength) - 1)) {
+            exp = (1 << expLength) - 1;
             man = 0;
         }
     }
@@ -649,7 +810,7 @@ FP16& FP16::operator=(const float& N) noexcept {
     return *this;
 }
 
-FP16& FP16::operator=(const double& N) noexcept{
+FP16& FP16::operator=(double N) noexcept{
     *this = float(N);
     return *this;
 }
@@ -663,158 +824,3 @@ FP16::operator float() const noexcept {
     float result = fp16_to_float(get_int());
     return result;
 }
-
-
-FP16 FP16::operator+(const FP16& right) const noexcept {
-    FP16 Res;
-    uint16_t temp = 0;
-    int16_t shift;
-    uint16_t max_exp,max_man,min_exp,min_man;
-    uint32_t lost_bit = 0;
-    uint8_t diff;
-
-    if (exp > right.exp) {
-        max_exp = exp;
-        max_man = man;
-        min_exp = right.exp;
-        min_man = right.man;
-        Res.sign = sign;
-        diff = max_exp - min_exp;
-    }
-    else {
-        if (exp == right.exp) {
-            if (man >= right.man) {
-                max_exp = exp;
-                max_man = man;
-                min_exp = right.exp;
-                min_man = right.man;
-                Res.sign = sign;
-                diff = max_exp - min_exp;
-            }
-            else {
-                min_exp = exp;
-                min_man = man;
-                max_exp = right.exp;
-                max_man = right.man;
-                Res.sign = right.sign;
-                diff = max_exp - min_exp;
-            }
-        }
-        else {
-            min_exp = exp;
-            min_man = man;
-            max_exp = right.exp;
-            max_man = right.man;
-            Res.sign = right.sign;
-            diff = max_exp - min_exp;
-        }
-    }
-    
-
-    shift = 1 << (10 - diff);
-    if ((10 - diff) < 0) shift = 0;
-    temp = (1024) + max_man + (1 - int(2 * ((this->sign + right.sign) % 2))) * (shift + (min_man >> diff));
-    lost_bit = min_man & (((1 << (diff)) - 1));
-    lost_bit += (1024) & (((1 << (diff)) - 1));
-
-
-    if ((exp == 0) || (right.exp == 0)) {
-        if ((exp == 0) && (right.exp == 0)) {
-            temp = max_man + (1 - (2 * ((this->sign + right.sign) % 2))) * min_man;
-        }
-        else {
-                diff = max_exp - 1;
-                temp = (1024) + max_man + (1 - (2 * ((this->sign + right.sign) % 2))) * (min_man >> diff);
-                lost_bit = min_man & (((1 << (diff)) - 1));
-        }
-    }
-
-
-    if ((sign != right.sign) && (lost_bit != 0)) {
-        temp--;
-        lost_bit = (1 << (diff)) - lost_bit;
-    }
-
-    if (temp >= (2048) && (max_exp > 0)) {
-        lost_bit += ((temp & 1) << (diff));
-        diff++;
-        temp = temp >> 1;
-        max_exp++;
-    }
-    else {
-        while (temp < (1024) && max_exp>1) {
-            temp <<= 1;
-            max_exp--;
-            temp += (lost_bit >> (diff - 1)) & 1;
-            lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
-            diff--;
-        }
-    }
-    if (temp == 0) {
-        Res.sign = 0;
-        Res.exp = 0;
-        Res.man = 0;
-        return Res;
-    }
-    if ((lost_bit >> (diff - 1))) {
-        lost_bit = lost_bit & ((1 << (diff - 1)) - 1);
-        if (lost_bit > 0) {
-            temp++;
-        }
-        else {
-            temp += (temp & 1);
-        }
-        if ((temp >= (1 << (11))) && (max_exp >= 1)) {
-            temp = temp >> 1;
-            max_exp++;
-        }
-    }
-
-    if (max_exp <= 1) {
-        if (temp < (1024) && max_exp == 1) {
-            max_exp = 0;
-        }
-
-        if (temp >= (1024) && (max_exp == 0)) {
-            max_exp = 1;
-            temp -= (1024);
-        }
-    }
-
-    if ((max_exp >= 31) || (exp == 31) || (right.exp == 31)) {
-        //inf +- inf
-        if (IsInf() && right.IsInf()) {
-            if (sign != right.sign) {
-                Res.exp = (1 << 5) - 1;
-                Res.man = 1;
-                return Res;
-            }
-            else {
-                return *this;
-            }
-        }
-
-        if (IsInf()) return *this;
-
-        if (right.IsInf()) return right;
-
-        if (IsNan()) return *this;
-
-        if (right.IsNan()) return right;
-
-        //if result is inf
-        if (max_exp >= 31) {
-            Res.exp = 31;
-            Res.man = 0;
-            return Res;
-        }
-    }
-
-
-    Res.exp = max_exp;
-    Res.man = (temp - (1024));
-    if (max_exp == 0) Res.man = temp;
-    return Res;
-}
-
-
