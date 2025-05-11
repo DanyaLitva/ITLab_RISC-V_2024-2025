@@ -14,8 +14,24 @@
 #include <vector>
 using namespace std;
 
+const double MinVec = 0.;
+const double MaxVec = 1.;
+
+//diagonal elements different signs
+const double MinDiag = 100.;
+const double MaxDiag = 10000.;
+const double MinOther = -100.;
+const double MaxOther = 100.;
+
+//elements different signs
+//multiplied by the sum of the elements modulo
+const double MinDiag2 = 1.001;
+const double MaxDiag2 = 1.1;
+const double MinOther2 = 0.1;
+const double MaxOther2 = 10.;
+
 const int MAX_VECTOR_SIZE = 100000000;
-const int MAX_MATRIX_SIZE = 10000;
+const int MAX_MATRIX_SIZE = 100000;
 
 // Динамический вектор - 
 // шаблонный вектор на динамической памяти
@@ -201,10 +217,10 @@ public:
     void generate() {
         std::random_device r;
         std::default_random_engine e(r());
-        std::uniform_real_distribution<double> coef_gen(0.,1.);
+        std::uniform_real_distribution<double> coef_gen(MinVec,MaxVec);
 
         for (size_t i = 0; i < sz; ++i) {
-            pMem[i] = coef_gen(e) * (1 - (2* (rand()%2)));
+            pMem[i] = coef_gen(e) * (1 - ((rand()%2)*2));
         }
     }
 
@@ -388,7 +404,7 @@ public:
     void generate() {
         std::random_device r;
         std::default_random_engine e(r());
-        std::uniform_real_distribution<double> coef_gen(1.,2.);
+        std::uniform_real_distribution<double> coef_gen(0.,10.);
         for (size_t i = 0; i < sz; ++i) {
             for (size_t j = 0; j < sz; ++j) {
                 pMem[i][j] = T(coef_gen(e) * (1 - (2*(rand()%2))));
@@ -397,7 +413,7 @@ public:
         }
     }
 
-    void generate2() {
+    void generateMax() {
         for (size_t i = 0; i < sz; ++i) {
             for (size_t j = 0; j < sz; ++j) {
                 (*this)[i][j] = 0.0;
@@ -440,41 +456,33 @@ public:
     void generateGoodMatrix() {
         std::random_device r;
         std::default_random_engine e(r());
-        std::uniform_real_distribution<double> coef_gen(5.0, 100.0);  // Диапазон для диагональных элементов
-        std::uniform_real_distribution<double> small_gen(-4., 4.); // Малые значения для недиагональных элементов
-
-
-        // Заполнение диагонали положительными числами > 1
+        std::uniform_real_distribution<double> coef_gen(MinDiag, MaxDiag);
+        std::uniform_real_distribution<double> small_gen(MinOther, MaxOther);
         for (size_t i = 0; i < sz; ++i) {
-            pMem[i][i] = T(coef_gen(e)); // Гарантированно ненулевые элементы (>1)
-        }
-
-        // Добавление небольших недиагональных элементов
-        for (size_t i = 0; i < sz; ++i) {
-            for (size_t j = 0; j < sz; ++j) {
-                if (i != j) {
-                    pMem[i][j] = T(small_gen(e)); // Малые значения для обеспечения доминирования диагонали
-                }
+            //for (size_t j = i; j < sz; j++) {
+            for (size_t j = i; j < sz; j++) {
+                (*this)[i][j] = T(small_gen(e));
             }
+            (*this)[i][i] = T(coef_gen(e)) * (1 - ((rand() % 2) * 2));
         }
-        
+
     }
 
     
     void generateGoodMatrix2() {
         std::random_device r;
         std::default_random_engine e(r());
-        std::uniform_real_distribution<double> coef_gen(0.1,10.);
-        std::uniform_real_distribution<double> small_gen(1.001,1.1);
+        std::uniform_real_distribution<double> small_gen(MinOther2,MaxOther2);
+        std::uniform_real_distribution<double> coef_gen(MinDiag2,MaxDiag2);
         double sum = 0;
         for (size_t i = 0; i < sz; ++i) {
             sum = 0;
                 for (size_t j = 0; j < sz; ++j) {
                     if (i != j) {
-                        sum+= abs(pMem[i][j] = T(coef_gen(e) * (1 - (2 * (rand()%2)))));
+                        sum+= abs(pMem[i][j] = T(small_gen(e) * (1 - (2 * (rand()%2)))));
                     }
                 }
-                pMem[i][i]=T(small_gen(e) * sum * (1 - (2 * (rand()%2))));
+                pMem[i][i]=T(coef_gen(e) * sum * (1 - (2 * (rand()%2))));
             
             while(pMem[i][i] >10000.){
                 for (size_t j = 0; j < sz; ++j) {

@@ -812,8 +812,8 @@ FP16 FP16::operator+(const FP16& right) const noexcept {
 
 
     Res.exp = max_exp;
-    Res.man = (temp - (1024));
     if (max_exp == 0) Res.man = temp;
+    else Res.man = (temp - (1024));
     return Res;
 }
 
