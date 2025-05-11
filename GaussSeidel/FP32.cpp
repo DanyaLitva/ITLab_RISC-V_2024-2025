@@ -1,5 +1,29 @@
 #include "FP32.h"
+#if !__GNUC__ && !__clang__
+int32_t __builtin_clz(uint32_t num) {
+	\
+		if (num == 0) return 32; \
+			int32_t res = 0; \
+			while (!(num & 0x8000'0000)) {
+				\
+					num <<= 1; \
+					++res; \
+			} \
+				return res; \
+}
 
+int32_t __builtin_clzll(uint64_t num) {
+	\
+		if (num == 0) return 64; \
+			int32_t res = 0; \
+			while (!(num & 0x8000'0000'0000'0000)) {
+				\
+					num <<= 1; \
+					++res; \
+			} \
+				return res; \
+}
+#endif
 uint32_t FP32::add(uint32_t l, uint32_t r) const noexcept {
 	uint32_t res;
 	uint32_t el = (l & 0x7F800000) >> 23;

@@ -15,13 +15,13 @@
 using namespace std;
 
 const double MinVec = 0.;
-const double MaxVec = 1.;
+const double MaxVec = 10.;
 
 //diagonal elements different signs
-const double MinDiag = 100.;
-const double MaxDiag = 10000.;
-const double MinOther = -100.;
-const double MaxOther = 100.;
+const double MinDiag = 11.;
+const double MaxDiag = 20.;
+const double MinOther = -10.;
+const double MaxOther = 10.;
 
 //elements different signs
 //multiplied by the sum of the elements modulo

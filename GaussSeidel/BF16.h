@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cmath>
-
+#include <cstdint>
 #if !__GNUC__ && !__clang__
 int32_t __builtin_clz(uint32_t num) { \
 	if (num == 0) return 32; \

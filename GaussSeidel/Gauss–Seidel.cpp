@@ -11,12 +11,12 @@
 //cout << "double time: "<<elapsed/1000. <<" seconds"<< endl;
 
 double fp64perc =1.e-13;
-float fp32perc =0.00001;
-float fp16perc =0.1;
+float fp32perc = 0.00025;
+float fp16perc = 0.05;
 size_t count4pre = 10;
-size_t count_repeat = 2;
-size_t MSize = 128;
-size_t count_it = 1;
+size_t count_repeat = 1;
+size_t MSize = 1024;
+size_t count_it = 3;
 bool WriteMatrix = false;
 
 template<typename type>
@@ -25,11 +25,11 @@ TDynamicVector<type> Gauss_Seidel_accurate(TDynamicMatrix<type> A, TDynamicVecto
     
     //initial approximation
     temp = x;
-    
+    auto start = std::chrono::steady_clock::now();
     size_t count_it = 0;
     while(true) {
         //    while(!CloseSol(A, x, b, ref)) {
-        //auto start = std::chrono::steady_clock::now();
+        start = std::chrono::steady_clock::now();
         if(CloseSol(A, x, b, ref)) break;
         for(size_t repeat = 0; repeat<count_repeat; repeat++){
             for (size_t i = 0; i < b.size(); ++i) {
@@ -47,6 +47,10 @@ TDynamicVector<type> Gauss_Seidel_accurate(TDynamicMatrix<type> A, TDynamicVecto
             }
             if (temp == x) {
                 cout << "CYCLE after "<<count_it<<" iterations" << endl;
+		auto end = std::chrono::steady_clock::now();
+    		double elapsed = std::chrono::duration_cast<std::chrono::milliseconds> (end - start).count();
+    		cout << "last it time: " << elapsed / 1000. << " seconds" << endl;
+
                 return x;
             }
 
@@ -55,6 +59,9 @@ TDynamicVector<type> Gauss_Seidel_accurate(TDynamicMatrix<type> A, TDynamicVecto
         }
     }
     cout<<"count it: "<<count_it<<endl;
+    auto end = std::chrono::steady_clock::now();
+    double elapsed = std::chrono::duration_cast<std::chrono::milliseconds> (end - start).count();
+    cout << "last it time: " << elapsed / 1000. << " seconds" << endl;
     return x;
 }
 
@@ -190,7 +197,7 @@ int main() {
     double maxT = 0;
     
     for(size_t temp_it = 0; temp_it < count_it;temp_it++){
-        A.generateGoodMatrix();
+        A.generateGoodMatrix2();
         b.generate();
         cout<<endl<<endl<<"Iteration #"<<temp_it+1<<endl;
         cout<<"About Matrix:"<<endl;

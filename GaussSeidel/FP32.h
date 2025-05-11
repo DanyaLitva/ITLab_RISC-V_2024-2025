@@ -1,26 +1,6 @@
 #include <iostream>
 #include "FP16.h"
-#if !__GNUC__ && !__clang__
-int32_t __builtin_clz(uint32_t num) { \
-	if (num == 0) return 32; \
-	int32_t res = 0; \
-	while (!(num & 0x8000'0000)) { \
-		num <<= 1; \
-		++res; \
-	} \
-	return res; \
-} 
 
-int32_t __builtin_clzll(uint64_t num) { \
-	if (num == 0) return 64; \
-	int32_t res = 0; \
-	while (!(num & 0x8000'0000'0000'0000)) { \
-		num <<= 1; \
-		++res; \
-	} \
-	return res; \
-} 
-#endif
 
 class FP32 {
 private:
