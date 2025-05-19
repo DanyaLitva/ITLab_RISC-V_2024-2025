@@ -1,4 +1,5 @@
 #include "FP32.h"
+
 #if !__GNUC__ && !__clang__
 int32_t __builtin_clz(uint32_t num) {
 	\
@@ -24,6 +25,7 @@ int32_t __builtin_clzll(uint64_t num) {
 				return res; \
 }
 #endif
+
 uint32_t FP32::add(uint32_t l, uint32_t r) const noexcept {
 	uint32_t res;
 	uint32_t el = (l & 0x7F800000) >> 23;

@@ -11,9 +11,9 @@
 
 class FP16 {
 private:
-    unsigned int man : 10;
-    unsigned int exp : 5;
-    unsigned int sign : 1;
+    uint16_t man : 10;
+    uint16_t exp : 5;
+    uint16_t sign : 1;
 
 public:
     FP16(int _sign = 0, int _exp = 0, int _man = 0):sign(_sign), exp(_exp), man(_man) {}

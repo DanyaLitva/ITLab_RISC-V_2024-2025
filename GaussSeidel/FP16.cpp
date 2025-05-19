@@ -129,7 +129,7 @@ FP16 FP16::operator*(const FP16& right) const noexcept {
         temp_exp++;
     }
 
-    if ((temp_exp >= ((1 << 5) - 1 - 15)) || IsInf() || right.IsInf() || IsNan() || right.IsNan()) {
+    if ((temp_exp >= (32 - 1 - 15)) || IsInf() || right.IsInf() || IsNan() || right.IsNan()) {
         //inf +- inf
         if (IsInf() && right.IsInf()) {
             if (sign != right.sign) {

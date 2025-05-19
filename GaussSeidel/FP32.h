@@ -1,7 +1,6 @@
 #include <iostream>
 #include "FP16.h"
 
-
 class FP32 {
 private:
 	uint32_t data;
