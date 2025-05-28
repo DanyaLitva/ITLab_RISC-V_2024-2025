@@ -1,0 +1,47 @@
+Matrix size: 8192*8192
+number of iterations before checking the accuracy: 1
+
+
+Iteration #1
+About Matrix:
+A min: -0.999668
+A max: 0.999808
+x min: -0.999354
+x max: 0.999893
+b min: -1.42951
+b max: 1.66784
+
+double count it: 36
+last it time: 1.543 seconds
+double time: 61.507 seconds
+general double time: 62.788 seconds
+(Ax-b) min: -6.56697e-14
+(Ax-b) max: 4.9849e-14
+
+float count it: 18
+last it time: 0.764 seconds
+float time: 18.551 seconds
+double count it: 24
+last it time: 1.538 seconds
+double time: 40.393 seconds
+general float+double time: 58.783 seconds
+(Ax-b) min: -6.11733e-14
+(Ax-b) max: 6.24899e-14
+
+FP32 count it: 18
+last it time: 7.19 seconds
+FP32 time: 151.018 seconds
+general FP32 time: 152.433 seconds
+(Ax-b) min: -0.00011463
+(Ax-b) max: 9.76106e-05
+
+P16 CYCLE after 192 iterations
+last it time: 8.372 seconds
+FP16 time: 1603.32 seconds
+FP32 count it: 11
+last it time: 7.614 seconds
+FP32 time: 100.237 seconds
+general FP16+FP32 time: 1709.25 seconds
+(Ax-b) min: -0.00015415
+(Ax-b) max: 0.000164988
+

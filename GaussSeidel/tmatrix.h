@@ -14,21 +14,22 @@
 #include <vector>
 using namespace std;
 
-const double MinVec = 0.;
-const double MaxVec = 10.;
+const double MinVec = 0.1;
+const double MaxVec = 1.;
 
 //diagonal elements different signs
-const double MinDiag = 11.;
-const double MaxDiag = 20.;
-const double MinOther = -10.;
-const double MaxOther = 10.;
+const double MinDiag = 0.1;
+const double MaxDiag = 1.;
+const double MinOther = 0.00001;
+const double MaxOther = 0.001;
+
 
 //elements different signs
 //multiplied by the sum of the elements modulo
-const double MinDiag2 = 1.001;
+const double MinDiag2 = 1.0000000001;
 const double MaxDiag2 = 1.1;
-const double MinOther2 = 0.1;
-const double MaxOther2 = 10.;
+const double MinOther2 = 0.00001;
+const double MaxOther2 = 0.001;
 
 const int MAX_VECTOR_SIZE = 100000000;
 const int MAX_MATRIX_SIZE = 100000;
@@ -461,9 +462,9 @@ public:
         for (size_t i = 0; i < sz; ++i) {
             //for (size_t j = i; j < sz; j++) {
             for (size_t j = i; j < sz; j++) {
-                (*this)[i][j] = T(small_gen(e));
+                (*this)[i][j] = T(small_gen(e)) * T(double((1 - ((rand() % 2) * 2))));
             }
-            (*this)[i][i] = T(coef_gen(e)) * (1 - ((rand() % 2) * 2));
+            (*this)[i][i] = T(coef_gen(e)) * T(double((1 - ((rand() % 2) * 2))));
         }
 
     }
@@ -701,15 +702,12 @@ template <typename type>
 bool CloseSol2(TDynamicMatrix<type> A, TDynamicVector<type> x, TDynamicVector<type> b, type ref) {
     TDynamicVector<type> temp(x.size());
     temp = (A*x - b);
-    double b_sum, axb_sum;
-    b_sum = axb_sum = 0;
+    double sum1 = 0;
     for (size_t i = 0; i < A.size(); ++i) {
-        b_sum+=double(b[i]*b[i]);
-        axb_sum += double(temp[i]*temp[i]);
+        sum1 += double(temp[i]*temp[i]);
     }
-    
-    if((axb_sum/b_sum)>double(ref)) return false;
-    else return true;
+    if ((sum1) > double(ref)) return false;
+    return true;
 }
 
 
