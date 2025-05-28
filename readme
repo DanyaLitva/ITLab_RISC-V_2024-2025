@@ -1,0 +1,4 @@
+FP:
+BF16, FP32, LU - Zagryadskov M
+FP16, Gauss-Seidel - Litvyakov D
+FP64, QR - Kulik A
